@@ -1,0 +1,30 @@
+# substitutions:
+#   device_name: dimmer_outlet_1
+#   friendly_name: Dimmer Outlet 1
+
+<<: !include ../.common.yaml
+
+esphome:
+  name: $device_name
+  platform: ESP8266
+  board: esp01_1m
+
+logger:
+  baud_rate: 0
+
+uart:
+  rx_pin: GPIO3
+  tx_pin: GPIO1
+  baud_rate: 9600
+
+# Register the Tuya MCU connection
+tuya:
+
+light:
+  - platform: "tuya"
+    name: "dim1"
+    dimmer_datapoint: 3
+    min_value_datapoint: 2
+    switch_datapoint: 1
+    min_value: 10
+    max_value: 1000
