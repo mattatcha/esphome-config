@@ -1,0 +1,63 @@
+substitutions:
+  device_name: train-2
+  friendly_name: Train 2
+
+packages:
+  common: !include .common.yaml
+
+# esphome:
+#   platformio_options:
+#     build_flags: "-DBOARD_HAS_PSRAM"
+#     board_build.arduino.memory_type: qio_opi
+#     board_build.flash_mode: dio
+# board_upload.maximum_ram_size: 524288
+
+esp32:
+  board: esp32-s3-devkitc-1
+  # board: lolin_s3_mini
+  variant: esp32s3
+  flash_size: 4MB
+
+web_server:
+
+# Example configuration entry
+fan:
+  - platform: hbridge
+    name: $friendly_name Motor
+    pin_a: motor_a_forward_pin
+    pin_b: motor_a_reverse_pin
+    enable_pin: motors_enable
+
+    decay_mode: slow # slow decay mode (braking) or fast decay (coasting).
+  - platform: hbridge
+    name: $friendly_name Motor 2
+    pin_a: motor_b_forward_pin
+    pin_b: motor_b_reverse_pin
+    enable_pin: motors_enable
+
+    decay_mode: slow # slow decay mode (braking) or fast decay (coasting).
+
+output:
+  - platform: ledc
+    pin: GPIO7
+    id: motor_a_forward_pin
+  - platform: ledc
+    pin: GPIO11
+    id: motor_a_reverse_pin
+  - platform: ledc
+    pin: GPIO9
+    id: motors_enable
+
+  - platform: ledc
+    pin: GPIO8
+    id: motor_b_forward_pin
+  - platform: ledc
+    pin: GPIO10
+    id: motor_b_reverse_pin
+# 7
+# 8
+# 9
+# 10
+# 11
+# 12
+# 13

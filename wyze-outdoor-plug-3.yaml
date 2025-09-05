@@ -1,0 +1,15 @@
+substitutions:
+  device_name: outdoor-plug-3
+  friendly_name: Outdoor Plug 3
+
+  # Higher value gives lower watt readout
+  current_res: "0.001"
+  # Lower value gives lower voltage readout
+  voltage_div: "770"
+
+<<: !include ./wyze/outdoor-plug.yaml
+
+esphome:
+  name: ${device_name}
+  platform: ESP32
+  board: esp-wrover-kit

@@ -1,0 +1,31 @@
+substitutions:
+  device_name: train-1
+  friendly_name: Train 1
+
+<<: !include .common.yaml
+
+esphome:
+  name: $device_name
+  platform: ESP32
+  board: nodemcu-32s
+
+# Example configuration entry
+fan:
+  - platform: hbridge
+    name: $friendly_name Motor
+    pin_a: motor_forward_pin
+    pin_b: motor_reverse_pin
+    enable_pin: motor_enable
+
+    decay_mode: slow   # slow decay mode (braking) or fast decay (coasting).
+
+output:
+  - platform: ledc
+    pin: GPIO25
+    id: motor_forward_pin
+  - platform: ledc
+    pin: GPIO26
+    id: motor_reverse_pin
+  - platform: ledc
+    pin: GPIO33
+    id: motor_enable

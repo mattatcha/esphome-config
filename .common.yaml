@@ -1,0 +1,23 @@
+esphome:
+  name: $device_name
+  friendly_name: $friendly_name
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+  level: INFO
+
+api:
+
+ota:
+  platform: esphome
+
+button:
+  - platform: restart
+    name: Restart
+
+binary_sensor:
+  - platform: status
+    name: Status

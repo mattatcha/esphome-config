@@ -1,0 +1,19 @@
+substitutions:
+  device_name: upstairs-hvac
+  friendly_name: Upstairs Hvac
+
+packages:
+  common: !include .common.yaml
+
+esphome:
+  platform: ESP32
+  board: esp-wrover-kit
+
+external_components:
+  - source: github://geoffdavis/esphome-mitsubishiheatpump
+
+climate:
+  - platform: mitsubishi_heatpump
+    name: ${friendly_name}
+
+    hardware_uart: UART2

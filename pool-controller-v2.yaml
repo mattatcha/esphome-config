@@ -1,0 +1,343 @@
+substitutions:
+  device_name: pool-controller-v2
+  friendly_name: Pool Controller V2
+
+packages:
+  common: !include .common.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+api:
+  actions:
+    - action: get_orp_calibration
+      then:
+        - lambda: |-
+            id(orp_ezo).get_calibration();
+    - action: set_orp_calibration
+      # variables:
+      # solution_mv: int
+      then:
+        - lambda: |-
+            id(orp_ezo).set_calibration_generic(222);
+
+esphome:
+  on_boot:
+    - tmc2209.configure:
+        id: chlorinator
+        microsteps: 1
+        interpolation: false
+        direction: ccw
+    - tmc2209.currents:
+        id: chlorinator
+        standstill_mode: freewheeling
+        irun: 16
+    - tmc2209.configure:
+        id: muratic_acid
+        microsteps: 1
+        interpolation: false
+        direction: ccw
+    - tmc2209.currents:
+        id: muratic_acid
+        standstill_mode: freewheeling
+        irun: 16
+
+uart:
+  tx_pin: 17
+  rx_pin: 16
+  baud_rate: 500000
+
+i2c:
+  sda: 21
+  scl: 22
+  scan: false
+  id: bus_a
+
+wifi:
+  power_save_mode: none
+  reboot_timeout: 1h
+
+web_server:
+  port: 80
+
+logger:
+  level: DEBUG
+
+external_components:
+  - source: github://slimcdk/esphome-custom-components
+    components: [tmc2209_hub, tmc2209, stepper]
+
+.chlorinator_pins: &ChlorinatorPins
+  index_pin: 27
+  enn_pin: 14
+  diag_pin: 26
+
+.muratic_pins: &MuraticPins
+  index_pin: 33
+  enn_pin: 13
+  diag_pin: 32
+
+# api:
+#   actions:
+#     - action: dose_chlorine
+#       then:
+#         # - switch.turn_on: relay
+#         # - delay: 3h
+#         # - switch.turn_off: relay
+
+tmc2209_hub:
+
+stepper:
+  - platform: tmc2209
+    id: chlorinator
+    max_speed: 586 steps/s
+    rsense: 110 mOhm
+    address: 0x00
+    config_dump_include_registers: true
+    on_status:
+      - logger.log:
+          format: "Chlorine driver is reporting an update! (code %d)"
+          args: ["code"]
+    <<: *ChlorinatorPins
+  - platform: tmc2209
+    id: muratic_acid
+    max_speed: 586 steps/s
+    rsense: 110 mOhm
+    config_dump_include_registers: true
+    address: 0x01
+    on_status:
+      - logger.log:
+          format: "Acid driver is reporting an update! (code %d)"
+          args: ["code"]
+    <<: *MuraticPins
+
+number:
+  - platform: template
+    name: "Chlorine Dose Amount (mL)"
+    id: chlorine_dose_amount
+    optimistic: true
+    min_value: 1
+    max_value: 2000
+    step: 1
+  - platform: template
+    name: "Acid Dose Amount (mL)"
+    id: acid_dose_amount
+    optimistic: true
+    min_value: 1
+    max_value: 2000
+    step: 1
+
+# Button to run the calibration test
+button:
+  - platform: template
+    name: "Run Custom Chlorine Dose"
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: "return id(pump).state;"
+            then:
+              - logger.log: "Dosing Chlorine..."
+              # - stepper.report_position:
+              #     id: chlorinator
+              #     position: 0
+              - stepper.set_target:
+                  id: chlorinator
+                  target: !lambda "return id(chlorinator).current_position + (int(id(chlorine_dose_amount).state) * 565);"
+              - while:
+                  condition:
+                    lambda: |-
+                      return id(chlorinator).current_position != id(chlorinator).target_position;
+                  then:
+                    - delay: 5s
+              - logger.log: "Chlorine dosing done!"
+            else:
+              - logger.log: "Cannot dose chlorine - pool pump must be running"
+  - platform: template
+    name: "Run Custom Acid Dose"
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: "return id(pump).state;"
+            then:
+              - logger.log: "Dosing Acid..."
+              # - stepper.report_position:
+              #     id: muratic_acid
+              #     position: 0
+              - stepper.set_target:
+                  id: muratic_acid
+                  target: !lambda "return id(muratic_acid).current_position + (int(id(acid_dose_amount).state) * 565);"
+              - while:
+                  condition:
+                    lambda: |-
+                      return id(muratic_acid).current_position != id(muratic_acid).target_position;
+                  then:
+                    - logger.log:
+                        format: "muratic acid position! (code %d)"
+                        args: ["id(muratic_acid).current_position"]
+                    - delay: 5s
+              - logger.log: "Acid dosing done!"
+            else:
+              - logger.log: "Cannot dose acid - pool pump must be running"
+
+sensor:
+  - platform: adc
+    id: raw_ntc
+    pin: 34
+  - platform: resistance
+    id: ntc_resistance
+    sensor: raw_ntc
+    configuration: DOWNSTREAM
+    resistor: 10kOhm
+    name: NTC Resistance
+  - platform: ntc
+    sensor: ntc_resistance
+    calibration:
+      - 1667.7Ohm -> 29.4°C
+      - 2119.6Ohm -> 20°C
+      - 2626.9Ohm -> 10°C
+    name: Pool Water Temperature
+    icon: mdi:coolant-temperature
+
+    # update_interval: never
+
+  - platform: ezo
+    id: orp_ezo
+    name: "ORP"
+    icon: mdi:react
+    address: 98
+    unit_of_measurement: "mV"
+    accuracy_decimals: 1
+    update_interval: 30s
+    state_class: "measurement"
+    device_class: voltage
+    on_calibration:
+      then:
+        - logger.log:
+            format: "ORP sensor calibration updated: (code %s)"
+            args: ["x.c_str()"]
+
+  - platform: copy
+    source_id: orp_ezo
+    id: orp_avg
+    icon: mdi:react
+    name: "ORP Average"
+    state_class: "measurement"
+    device_class: voltage
+    unit_of_measurement: mV
+    accuracy_decimals: 1
+    filters:
+      - sliding_window_moving_average:
+          window_size: 10
+          send_every: 1
+          send_first_at: 1
+
+  - platform: adc
+    name: "pH Voltage"
+    id: raw_ph
+    # attenuation: auto
+    attenuation: 12dB
+    pin: 35
+    update_interval: 60s
+
+  - platform: copy
+    source_id: raw_ph
+    name: "pH"
+    # update_interval: 5s
+    device_class: pH
+    unit_of_measurement: pH
+    filters:
+      - median:
+          window_size: 15
+          send_every: 8
+      # Only report pH values when pump is off to avoid unstable readings
+      - lambda: |-
+          if (id(pump).state) {
+            return {};  // Don't report when pump is running
+          }
+          return x;
+      # Measured voltage -> Actual pH (buffer solution)
+      - calibrate_polynomial:
+          degree: 2
+          datapoints:
+            - 1.26 -> 4.0
+            - 1.412 -> 7.0
+            - 1.56 -> 10.01
+
+  - platform: wifi_signal
+    name: "WiFi Signal Sensor"
+    update_interval: 60s
+
+  - platform: uptime
+    type: seconds
+    name: Uptime Sensor
+
+  - platform: template
+    name: "Total Chlorine Dosed"
+    id: total_chlorine_dosed
+    unit_of_measurement: "mL"
+    device_class: volume
+    state_class: total_increasing
+    accuracy_decimals: 2
+    lambda: |-
+      return id(chlorinator).current_position / 565.0;
+    update_interval: 5s
+
+  - platform: template
+    name: "Total Acid Dosed"
+    id: total_acid_dosed
+    unit_of_measurement: "mL"
+    device_class: volume
+    state_class: total_increasing
+    accuracy_decimals: 2
+    lambda: |-
+      return id(muratic_acid).current_position / 565.0;
+    update_interval: 5s
+
+globals:
+  - id: pump_start_time
+    type: unsigned long
+    restore_value: no
+    initial_value: "0"
+
+switch:
+  - platform: gpio
+    id: pump
+    name: Pool Pump
+    pin:
+      number: 4
+      inverted: False
+    icon: mdi:water-pump
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - globals.set:
+          id: pump_start_time
+          value: !lambda "return millis();"
+    on_turn_off:
+      - switch.turn_off: booster_pump
+      - globals.set:
+          id: pump_start_time
+          value: "0"
+      - stepper.stop: chlorinator
+      - stepper.stop: muratic_acid
+  - platform: gpio
+    id: booster_pump
+    name: Pool Cleaner
+    pin:
+      number: 18
+      inverted: False
+    icon: mdi:water-pump
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - if:
+          condition:
+            lambda: |-
+              return id(pump).state && (millis() - id(pump_start_time) >= 300000);
+          then:
+            - logger.log: "Booster pump allowed to start - pool pump has been running for 5+ minutes"
+          else:
+            - logger.log: "Booster pump blocked - pool pump must run for 5 minutes first"
+            - switch.turn_off: booster_pump
