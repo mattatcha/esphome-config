@@ -1,0 +1,98 @@
+
+
+- obj:
+    align: CENTER
+    width: 100%
+    height: 100%
+    pad_all: 3
+    pad_row: 6
+    pad_column: 8
+    bg_opa: TRANSP
+    border_opa: TRANSP
+    layout:
+      type: FLEX
+      flex_flow: COLUMN_WRAP
+      flex_align_cross: CENTER
+    widgets:
+      - label:
+          text: "Remaining Capacity"
+      - obj:
+          align: center
+          height: 380
+          width: 380
+          bg_color: 0xFFFFFF
+          border_width: 0
+          pad_all: 14
+          widgets:
+            - meter:
+                height: 100%
+                width: 100%
+                border_width: 0
+                scales:
+                  - range_from: 200
+                    range_to: -400
+                    angle_range: 240
+                    rotation: 150
+                    ticks:
+                      count: 51
+                      length: 3
+                      major:
+                        stride: 5
+                        length: 13
+                        label_gap: 25
+                    indicators:
+                      - arc:
+                          start_value: -275
+                          end_value: -400
+                          # color red
+                          color: 0xFF0000
+                          # end_value:
+                      # - line:
+                      #     id: temperature_needle
+                      #     width: 2
+                      #     color: 0xFF0000
+                      #     r_mod: -4
+                      - tick_style:
+                          start_value: 175
+                          end_value: 0
+                          # color soft green
+                          color_start: 0x00FF00
+                          color_end: 0xbd0000 #0000FF
+                  - range_from: -200
+                    range_to: 350
+                    angle_range: 150
+                    ticks:
+                      count: 0
+                    indicators:
+                      - line:
+                          id: temperature_needle
+                          width: 8
+                          r_mod: 2
+                          value: -150
+
+            - obj: # to cover the middle part of meter indicator line
+                height: 200
+                width: 200
+                radius: 73
+                align: CENTER
+                border_width: 0
+                pad_all: 0
+                bg_color: 0xFFFFFF
+      # - label:
+      #     id: bms_1_remaining_capacity_label
+      # - label:
+      #     id: bms_1_soc_label
+      # - label:
+      #     id: bms_1_voltage_label
+      # - label:
+      #     text_font: montserrat_48
+      #     id: bms_1_current_label
+      # - label:
+      #     id: bms_2_remaining_capacity_label
+      # - label:
+      #     id: bms_2_soc_label
+      # - label:
+      #     id: bms_2_voltage_label
+      # - label:
+      #     text_font: montserrat_48
+      #     id: bms_2_current_label

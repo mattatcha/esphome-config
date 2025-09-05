@@ -1,0 +1,21 @@
+- label:
+    text: ${cell_number}
+    text_align: RIGHT
+    grid_cell_column_pos: ${label_column}
+    grid_cell_row_pos: ${row}
+    grid_cell_x_align: STRETCH
+    grid_cell_y_align: CENTER
+- bar:
+    id: bms_${bms_number}_cell_${cell_number}_bar
+    grid_cell_column_pos: ${bar_column}
+    grid_cell_row_pos: ${row}
+    grid_cell_x_align: STRETCH
+    grid_cell_y_align: STRETCH
+    min_value: 0
+    max_value: 365
+- label:
+    id: bms_${bms_number}_cell_${cell_number}_label
+    text: "-.--v"
+    styles: cell_voltage_label_style
+    grid_cell_column_pos: ${bar_column}
+    grid_cell_row_pos: ${row}

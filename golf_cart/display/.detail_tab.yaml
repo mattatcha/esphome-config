@@ -1,0 +1,258 @@
+    - obj:
+        width: 100%
+        height: 100%
+        # height: 300
+        pad_all: 0
+        pad_row: 0
+        pad_column: 8
+        bg_opa: TRANSP
+        border_opa: TRANSP
+        layout:
+          type: GRID # split the rows and the columns proportionally
+          grid_columns: [FR(10), FR(5), FR(1), FR(5)]
+          grid_rows: [FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1),FR(1), FR(1)]
+        widgets:
+          - label:
+              text: "Total Current"
+              grid_cell_column_pos: 0
+              grid_cell_column_span: 2
+              grid_cell_row_pos: 0
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: STRETCH
+          - label:
+              id: total_current_label
+              text_font: montserrat_48
+              grid_cell_column_span: 2
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 1
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: STRETCH
+              text: "---.---A"
+          - label:
+              text: "Max Discharge"
+              grid_cell_column_pos: 2
+              grid_cell_column_span: 2
+              grid_cell_row_pos: 0
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: STRETCH
+          - label:
+              id: max_combined_discharge_current_label
+              text_font: montserrat_48
+              grid_cell_column_span: 2
+              grid_cell_column_pos: 2
+              grid_cell_row_pos: 1
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: STRETCH
+              text: "---.---A"
+          - label:
+              text: "Remaining Capacity"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 3
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "SOC"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 4
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Voltage"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 5
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Current"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 6
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Cell Delta"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 7
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Max Charge Current"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 8
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Max Discharge"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 9
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Max Delta"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 10
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Max Voltage"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 11
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              text: "Min Voltage"
+              grid_cell_column_pos: 0
+              grid_cell_row_pos: 12
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_1_remaining_capacity_label
+              text: "---.---Ah"
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 3
+
+          - label:
+              id: bms_1_soc_label
+              text: "---.--%"
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 4
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+
+          - label:
+              id: bms_1_voltage_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 5
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+
+          - label:
+              # text_font: montserrat_48
+              id: bms_1_current_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 6
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+
+          - label:
+              id: bms_1_cell_delta_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 7
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+
+          - label:
+              id: bms_1_max_charge_current_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 8
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+
+          - label:
+              id: bms_1_max_discharge_current_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 9
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_1_max_cell_delta_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 10
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_1_max_voltage_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 11
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_1_min_voltage_label
+              grid_cell_column_pos: 1
+              grid_cell_row_pos: 12
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_remaining_capacity_label
+              text: "---.---Ah"
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 3
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_soc_label
+              text: "---.--%"
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 4
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_voltage_label
+              text: "---.---v"
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 5
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              # text_font: montserrat_48
+              id: bms_2_current_label
+              text: 0.00A
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 6
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          # - label:
+          #     text: "Cell Delta"
+          #     grid_cell_column_pos: 2
+          #     grid_cell_row_pos: 7
+          #     grid_cell_x_align: STRETCH
+          #     grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_cell_delta_label
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 7
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          # - label:
+          #     text: "Max Current"
+          #     grid_cell_column_pos: 2
+          #     grid_cell_row_pos: 8
+          #     grid_cell_x_align: STRETCH
+          #     grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_max_charge_current_label
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 8
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          # - label:
+          #     text: "Min Current"
+          #     grid_cell_column_pos: 2
+          #     grid_cell_row_pos: 9
+          #     grid_cell_x_align: STRETCH
+          #     grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_max_discharge_current_label
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 9
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_max_cell_delta_label
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 10
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_max_voltage_label
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 11
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER
+          - label:
+              id: bms_2_min_voltage_label
+              grid_cell_column_pos: 3
+              grid_cell_row_pos: 12
+              grid_cell_x_align: STRETCH
+              grid_cell_y_align: CENTER

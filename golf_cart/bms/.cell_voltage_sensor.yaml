@@ -1,0 +1,4 @@
+# name: "${friendly_name} BMS ${bms_number} cell voltage ${cell_number}"
+id: bms_${bms_number}_cell_${cell_number}_voltage_sensor
+filters:
+  - delta: 0.001

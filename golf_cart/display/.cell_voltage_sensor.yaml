@@ -1,0 +1,15 @@
+# name: "${friendly_name} BMS ${bms_number} cell voltage ${cell_number}"
+id: bms_${bms_number}_cell_${cell_number}_voltage_sensor
+filters:
+  - delta: 0.002
+on_value:
+  then:
+    - lvgl.bar.update:
+        id: bms_${bms_number}_cell_${cell_number}_bar
+        value: !lambda "return x * 100;"
+    - lvgl.label.update:
+        id: bms_${bms_number}_cell_${cell_number}_label
+        text:
+          format: "%.3fv"
+          args:
+            - "x"

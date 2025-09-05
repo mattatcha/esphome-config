@@ -1,0 +1,194 @@
+substitutions:
+  device_name: golf-cart
+  friendly_name: Golf Cart
+  rx_timeout: 150ms
+
+  TP_IRQ: GPIO04
+  # TP_SDA: GPIO08
+  # TP_SCL: GPIO09
+  SPI_MOSI: GPIO11
+  # SPI_CLK:
+  I2C_SDA: GPIO08
+  I2C_SCL: GPIO09
+
+# GPIO8(SDA) and GPIO9(SCL)
+
+packages:
+  common: !include ../.common.yaml
+  base: !include display/.base.yaml
+  bms_1: !include
+    file: display/.bms_config.yaml
+    vars:
+      bms_number: 1
+      mac_address: A4:C1:37:34:2B:B3
+  bms_2: !include
+    file: display/.bms_config.yaml
+    vars:
+      bms_number: 2
+      mac_address: A4:C1:37:00:4E:EA
+
+
+uart:
+  - id: uart_modbus_client
+    baud_rate: 115200
+    tx_pin: 16
+    rx_pin: 15
+
+modbus:
+  - uart_id: uart_modbus_client
+    id: modbus_client
+    role: client
+
+modbus_controller:
+  - modbus_id: modbus_client
+    address: 0x1
+    update_interval: 1s
+
+
+
+
+
+
+lvgl:
+  log_level: INFO
+  touchscreens:
+    - touchscreen_id: my_touch_screen_test
+
+  color_depth: 16
+  text_font: montserrat_20
+  align: center
+  theme:
+    bar:
+      radius: 0
+      indicator:
+        radius: 0
+  style_definitions:
+    - id: cell_voltage_label_style
+      text_color: 0xFFFFFF
+      pad_left: 10
+      grid_cell_x_align: STRETCH
+      grid_cell_y_align: CENTER
+  pages:
+    - id: disconnected_page
+      widgets:
+        - label:
+            align: CENTER
+            text: "Disconnected"
+        - button:
+            align: CENTER
+            y: 50
+            widgets:
+              - label:
+                  align: center
+                  text: "Demo Mode"
+            on_click:
+              then:
+                - globals.set:
+                    id: demo_mode
+                    value: "true"
+    - id: main_page
+      widgets:
+        - tabview:
+            id: tabview_id
+            position: bottom
+            tabs:
+              - name: Main
+                id: main_tab
+                widgets:
+                  - <<: !include
+                      file: display/.main_tab.yaml
+              - name: Detail
+                id: detail_tab
+                widgets:
+                  - <<: !include
+                      file: display/.detail_tab.yaml
+                      vars:
+                        bms_number: 1
+              - <<: !include
+                  file: display/.cells_tab.yaml
+                  vars:
+                    bms_number: 1
+              - <<: !include
+                  file: display/.cells_tab.yaml
+                  vars:
+                    bms_number: 2
+
+sensor:
+  - platform: combination
+    type: sum
+    name: "Total Current"
+    internal: true
+    sources:
+      - source: bms_1_current
+      - source: bms_2_current
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: total_current_label
+            text:
+              format: "%.3fA"
+              args:
+                - "x"
+
+  - platform: combination
+    type: max
+    id: max_combined_discharge_current
+    sources:
+      - source: bms_1_max_discharge_current
+      - source: bms_2_max_discharge_current
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: !lambda |-
+                static float max_current = 0.0;
+                if (x > max_current) {
+                  max_current = x;
+                }
+                return max_current;
+            then:
+              - lvgl.label.update:
+                  id: max_combined_discharge_current_label
+                  text:
+                    format: "%.3fA"
+                    args:
+                      - "x"
+
+  - platform: modbus_controller
+    # modbus_controller_id: modbus_client
+    name: "Battery Capacity"
+    register_type: holding
+    address: 0x0002    ## address of the register inside the Modbus slave device
+    unit_of_measurement: "AH"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    # modbus_controller_id: modbus_client
+    # name: "Battery Capacity"
+    id: bms_1_max_voltage_test
+    register_type: holding
+    address: 0x0100
+    unit_of_measurement: "V"
+    value_type: FP32
+
+  # - platform: template
+  #   id: bms_${bms_number}_max_voltage
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: bms_1_max_voltage_label
+            text:
+              format: "%.3fv"
+              args:
+                - "x"
+
+
+
+      #   on_value:
+  #     then:
+  #       - lvgl.label.update:
+  #           id: bms_${bms_number}_max_cell_delta_label
+  #           text:
+  #             format: "%.3fv"
+  #             args:
+  #               - "x"

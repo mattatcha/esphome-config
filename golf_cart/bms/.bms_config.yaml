@@ -1,0 +1,45 @@
+uart:
+  - id: bms_${bms_number}_uart
+    baud_rate: 9600
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+
+jbd_bms:
+  - id: bms_${bms_number}
+    uart_id: bms_${bms_number}_uart
+    update_interval: ${update_interval}
+    rx_timeout: ${rx_timeout}
+
+binary_sensor:
+  - platform: jbd_bms
+    jbd_bms_id: bms_${bms_number}
+    online_status:
+      id: bms_${bms_number}_online_status
+
+    balancing:
+      id: bms_${bms_number}_balancing
+    charging:
+      id: bms_${bms_number}_charging
+    discharging:
+      id: bms_${bms_number}_discharging
+
+sensor:
+  - platform: jbd_bms
+    jbd_bms_id: bms_${bms_number}
+    <<: !include
+      file: .bms_sensors.yaml
+
+  - platform: template
+    id: bms_${bms_number}_max_cell_delta_voltage
+
+  - platform: template
+    id: bms_${bms_number}_max_discharge_current
+
+  - platform: template
+    id: bms_${bms_number}_max_charge_current
+
+  - platform: template
+    id: bms_${bms_number}_max_voltage
+
+  - platform: template
+    id: bms_${bms_number}_min_voltage

@@ -1,0 +1,88 @@
+ble_client:
+  - id: client${bms_number}
+    mac_address: ${mac_address}
+
+jbd_bms_ble:
+  - id: bms${bms_number}
+    ble_client_id: client${bms_number}
+    update_interval: 500ms
+
+binary_sensor:
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms${bms_number}
+    online_status:
+      id: bms_${bms_number}_online_status
+      on_state:
+        if:
+          condition:
+            lambda: "return (x);"
+          then:
+            - lvgl.page.show:
+                id: main_page
+            - globals.set:
+                id: demo_mode
+                value: "false"
+    balancing:
+      id: bms_${bms_number}_balancing
+    charging:
+      id: bms_${bms_number}_charging
+    discharging:
+      id: bms_${bms_number}_discharging
+
+sensor:
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms${bms_number}
+    <<: !include
+      file: .bms_sensors.yaml
+      # vars:
+        # bms_number: ${bms_number}
+  - platform: template
+    id: bms_${bms_number}_max_cell_delta
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: bms_${bms_number}_max_cell_delta_label
+            text:
+              format: "%.3fv"
+              args:
+                - "x"
+  - platform: template
+    id: bms_${bms_number}_max_discharge_current
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: bms_${bms_number}_max_discharge_current_label
+            text:
+              format: "%.3fA"
+              args:
+                - "x"
+  - platform: template
+    id: bms_${bms_number}_max_charge_current
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: bms_${bms_number}_max_charge_current_label
+            text:
+              format: "%.3fA"
+              args:
+                - "x"
+  - platform: template
+    id: bms_${bms_number}_max_voltage
+  #   on_value:
+  #     then:
+  #       - lvgl.label.update:
+  #           id: bms_${bms_number}_max_voltage_label
+  #           text:
+  #             format: "%.3fv"
+  #             args:
+  #               - "x"
+  - platform: template
+    id: bms_${bms_number}_min_voltage
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: bms_${bms_number}_min_voltage_label
+            text:
+              format: "%.3fv"
+              args:
+                - "x"
