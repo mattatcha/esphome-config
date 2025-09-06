@@ -18,8 +18,8 @@ esp32:
   framework:
     type: esp-idf
     sdkconfig_options:
-    #   CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
-    #   CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      #   CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
+      #   CONFIG_ESP32S3_DATA_CACHE_64KB: y
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: y
 
@@ -66,11 +66,60 @@ uart:
     tx_pin: 11
     rx_pin: 12
 
-
 modbus:
   - uart_id: uart_modbus_server
     id: modbus_server
     role: server
+
+udp:
+  - addresses:
+      - 192.168.2.153
+
+packet_transport:
+  platform: udp
+  update_interval: 1s
+  sensors:
+    - bms_${bms_number}_current
+    - id: bms_${bms_number}_state_of_charge
+      broadcast_id: bms_${bms_number}_soc
+    - bms_${bms_number}_max_voltage
+    - bms_${bms_number}_min_voltage
+    - bms_${bms_number}_delta_cell_voltage
+    - bms_${bms_number}_average_cell_voltage
+    - bms_${bms_number}_max_charge_current
+    - bms_${bms_number}_max_discharge_current
+    - id: bms_${bms_number}_cell_16_voltage_sensor
+      broadcast_id: bms_${bms_number}_c16v
+    - id: bms_${bms_number}_cell_1_voltage_sensor
+      broadcast_id: bms_${bms_number}_c1v
+    - id: bms_${bms_number}_cell_2_voltage_sensor
+      broadcast_id: bms_${bms_number}_c2v
+    - id: bms_${bms_number}_cell_3_voltage_sensor
+      broadcast_id: bms_${bms_number}_c3v
+    - id: bms_${bms_number}_cell_4_voltage_sensor
+      broadcast_id: bms_${bms_number}_c4v
+    - id: bms_${bms_number}_cell_5_voltage_sensor
+      broadcast_id: bms_${bms_number}_c5v
+    - id: bms_${bms_number}_cell_6_voltage_sensor
+      broadcast_id: bms_${bms_number}_c6v
+    - id: bms_${bms_number}_cell_7_voltage_sensor
+      broadcast_id: bms_${bms_number}_c7v
+    - id: bms_${bms_number}_cell_8_voltage_sensor
+      broadcast_id: bms_${bms_number}_c8v
+    - id: bms_${bms_number}_cell_9_voltage_sensor
+      broadcast_id: bms_${bms_number}_c9v
+    - id: bms_${bms_number}_cell_10_voltage_sensor
+      broadcast_id: bms_${bms_number}_c10v
+    - id: bms_${bms_number}_cell_11_voltage_sensor
+      broadcast_id: bms_${bms_number}_c11v
+    - id: bms_${bms_number}_cell_12_voltage_sensor
+      broadcast_id: bms_${bms_number}_c12v
+    - id: bms_${bms_number}_cell_13_voltage_sensor
+      broadcast_id: bms_${bms_number}_c13v
+    - id: bms_${bms_number}_cell_14_voltage_sensor
+      broadcast_id: bms_${bms_number}_c14v
+    - id: bms_${bms_number}_cell_15_voltage_sensor
+      broadcast_id: bms_${bms_number}_c15v
 
 modbus_controller:
   - modbus_id: modbus_server
@@ -90,12 +139,10 @@ modbus_controller:
         read_lambda: |-
           return id(bms_${bms_number}_max_voltage).state;
 
-
       - address: 0x0092
         value_type: FP32
         read_lambda: |-
           return id(bms_${bms_number}_average_cell_voltage).state;
-
 
       - address: 0x0100
         value_type: FP32
@@ -163,7 +210,6 @@ modbus_controller:
         read_lambda: |-
           return id(bms_${bms_number}_cell_16_voltage_sensor).state;
 
-
 # sensor:
 #   - platform: combination
 #     type: sum
@@ -179,11 +225,6 @@ modbus_controller:
 #     sources:
 #       - source: bms_1_max_discharge_current
 #       - source: bms_2_max_discharge_current
-
-
-
-
-
 
 # sensor:
 #   - platform: modbus_controller

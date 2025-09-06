@@ -1,18 +1,16 @@
-
-
 - obj:
     align: CENTER
     width: 100%
     height: 100%
     pad_all: 3
-    pad_row: 6
-    pad_column: 8
     bg_opa: TRANSP
     border_opa: TRANSP
     layout:
       type: FLEX
       flex_flow: COLUMN_WRAP
       flex_align_cross: CENTER
+      pad_row: 6
+      pad_column: 8
     widgets:
       - label:
           text: "Remaining Capacity"

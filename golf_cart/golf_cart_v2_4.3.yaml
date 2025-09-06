@@ -27,6 +27,21 @@ packages:
       bms_number: 2
       mac_address: A4:C1:37:00:4E:EA
 
+logger:
+  level: INFO
+  initial_level: INFO
+  logs:
+    packet_transport: INFO
+
+ota:
+  on_begin:
+    then:
+      - esp32_ble_tracker.stop_scan:
+
+udp:
+
+packet_transport:
+  platform: udp
 
 uart:
   - id: uart_modbus_client
@@ -34,20 +49,15 @@ uart:
     tx_pin: 16
     rx_pin: 15
 
-modbus:
-  - uart_id: uart_modbus_client
-    id: modbus_client
-    role: client
+# modbus:
+#   - uart_id: uart_modbus_client
+#     id: modbus_client
+#     role: client
 
-modbus_controller:
-  - modbus_id: modbus_client
-    address: 0x1
-    update_interval: 1s
-
-
-
-
-
+# modbus_controller:
+#   - modbus_id: modbus_client
+#     address: 0x1
+#     update_interval: 10s
 
 lvgl:
   log_level: INFO
@@ -86,6 +96,8 @@ lvgl:
                 - globals.set:
                     id: demo_mode
                     value: "true"
+                - lvgl.page.show:
+                    id: main_page
     - id: main_page
       widgets:
         - tabview:
@@ -154,37 +166,48 @@ sensor:
                     args:
                       - "x"
 
-  - platform: modbus_controller
-    # modbus_controller_id: modbus_client
-    name: "Battery Capacity"
-    register_type: holding
-    address: 0x0002    ## address of the register inside the Modbus slave device
-    unit_of_measurement: "AH"
-    value_type: U_WORD
+  # - platform: modbus_controller
+  #   # modbus_controller_id: modbus_client
+  #   name: "Battery Capacity"
+  #   register_type: holding
+  #   address: 0x0002 ## address of the register inside the Modbus slave device
+  #   unit_of_measurement: "AH"
+  #   value_type: U_WORD
 
-  - platform: modbus_controller
-    # modbus_controller_id: modbus_client
-    # name: "Battery Capacity"
-    id: bms_1_max_voltage_test
-    register_type: holding
-    address: 0x0100
-    unit_of_measurement: "V"
-    value_type: FP32
+  # - platform: packet_transport
+  #   provider: golf-cart-bms
+  #   # modbus_controller_id: modbus_client
+  #   # name: "Battery Capacity"
+  #   remote_id: bms_1_max_voltage
+  #   id: bms_1_max_voltage_test
 
-  # - platform: template
-  #   id: bms_${bms_number}_max_voltage
-    on_value:
-      then:
-        - lvgl.label.update:
-            id: bms_1_max_voltage_label
-            text:
-              format: "%.3fv"
-              args:
-                - "x"
+  #   # - platform: template
+  #   #   id: bms_${bms_number}_max_voltage
+  #   on_value:
+  #     then:
+  #       - lvgl.label.update:
+  #           id: bms_1_max_voltage_label
+  #           text:
+  #             format: "%.3fv"
+  #             args:
+  #               - "x"
+  # - platform: packet_transport
+  #   provider: golf-cart-bms
 
+  #   id: bms_1_state_of_charge
+  #   # name: "${friendly_name} BMS 1 state of charge"
+  #   filters:
+  #     - delta: 1
+  #   on_value:
+  #     then:
+  #       - lvgl.label.update:
+  #           id: bms_1_soc_label
+  #           text:
+  #             format: "%.2f%%"
+  #             args:
+  #               - "id(bms_1_state_of_charge).state"
 
-
-      #   on_value:
+  #   on_value:
   #     then:
   #       - lvgl.label.update:
   #           id: bms_${bms_number}_max_cell_delta_label
