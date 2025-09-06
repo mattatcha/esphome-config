@@ -32,6 +32,7 @@ void NavitasTAC::dump_config() {
   LOG_SENSOR("  ", "Temperature", this->temperature_sensor_);
   LOG_SENSOR("  ", "Voltage", this->voltage_sensor_);
   LOG_SENSOR("  ", "Current", this->current_sensor_);
+  LOG_SENSOR("  ", "Motor RPM", this->motor_rpm_sensor_);
   LOG_SENSOR("  ", "Speed", this->speed_sensor_);
   LOG_SENSOR("  ", "SOC", this->soc_sensor_);
   LOG_TEXT_SENSOR("  ", "State", this->state_sensor_);
@@ -169,12 +170,12 @@ void NavitasTAC::build_parameter_request_() {
     ESP_LOGD(TAG, "Added current parameter (0x02)");
   }
 
-  if (this->speed_sensor_ != nullptr) {
+  if (this->motor_rpm_sensor_ != nullptr || this->speed_sensor_ != nullptr) {
     this->requested_parameters_.push_back(0x26);  // ROTORRPM
-    ESP_LOGD(TAG, "Added motor RPM parameter (0x26) for speed calculation");
+    ESP_LOGD(TAG, "Added motor RPM parameter (0x26)");
 
-    // Request vehicle configuration parameters for accurate speed calculation
-    if (!this->vehicle_config_received_) {
+    // Request vehicle configuration parameters for accurate speed calculation if speed sensor is configured
+    if (this->speed_sensor_ != nullptr && !this->vehicle_config_received_) {
       this->requested_parameters_.push_back(0x9B);  // TIREDIAMETER (155)
       this->requested_parameters_.push_back(0x9C);  // REARAXLERATIO (156)
       this->requested_parameters_.push_back(0x9D);  // MILESORKILOMETERS (157)
@@ -311,10 +312,15 @@ void NavitasTAC::parse_parameters_(const std::vector<uint8_t> &buffer, uint8_t d
           this->voltage_sensor_->publish_state(scaled_value);
         } else if (param_addr == 0x02 && this->current_sensor_ != nullptr && scaled_value < 500) {
           this->current_sensor_->publish_state(scaled_value);
-        } else if (param_addr == 0x26 && this->speed_sensor_ != nullptr) {
-          // ROTORRPM received - store it and calculate speed
+        } else if (param_addr == 0x26) {
+          // ROTORRPM received - publish to motor RPM sensor and calculate speed
           this->current_rpm_ = scaled_value;
-          this->calculate_and_publish_speed_();
+          if (this->motor_rpm_sensor_ != nullptr) {
+            this->motor_rpm_sensor_->publish_state(scaled_value);
+          }
+          if (this->speed_sensor_ != nullptr) {
+            this->calculate_and_publish_speed_();
+          }
         } else if (param_addr == 0x9B) {
           // TIREDIAMETER received - store controller value
           this->controller_tire_diameter_ = scaled_value;
