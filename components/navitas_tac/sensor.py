@@ -20,17 +20,26 @@ from . import NavitasTAC, CONF_NAVITAS_TAC_ID
 DEPENDENCIES = ["navitas_tac"]
 
 # Parameter names matching TACDictionary.xml <Name> values
-CONF_CONTROLLER_TEMPERATURE = "controller_temperature"  # "Controller Temperature (C)"
-CONF_DC_BUS_VOLTAGE = "dc_bus_voltage"                 # "DC Bus Voltage (V)"
-CONF_BATTERY_CURRENT = "battery_current"               # "Battery Current"
-CONF_MOTOR_RPM = "motor_rpm"                          # "Motor RPM"
-CONF_SPEED = "speed"                                   # Calculated from Motor RPM
-CONF_SOC = "soc"                                       # State of Charge (if available)
+CONF_CONTROLLER_TEMPERATURE = (
+    "controller_temperature"  # "Controller Temperature (C)" - PBTEMPC
+)
+CONF_MOTOR_TEMPERATURE = "motor_temperature"  # "Motor Temperature (C)" - MTTEMPC
+CONF_DC_BUS_VOLTAGE = "dc_bus_voltage"  # "DC Bus Voltage (V)" - VBATVDC
+CONF_BATTERY_CURRENT = "battery_current"  # "Battery Current" - IBATADC
+CONF_MOTOR_RPM = "motor_rpm"  # "Motor RPM" - ROTORRPM
+CONF_SPEED = "speed"  # Calculated from Motor RPM
+CONF_SOC = "soc"  # State of Charge (if available)
 
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_NAVITAS_TAC_ID): cv.use_id(NavitasTAC),
         cv.Optional(CONF_CONTROLLER_TEMPERATURE): sensor.sensor_schema(
+            unit_of_measurement=UNIT_CELSIUS,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_MOTOR_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement=UNIT_CELSIUS,
             accuracy_decimals=1,
             device_class=DEVICE_CLASS_TEMPERATURE,
@@ -75,6 +84,10 @@ async def to_code(config):
     if CONF_CONTROLLER_TEMPERATURE in config:
         sens = await sensor.new_sensor(config[CONF_CONTROLLER_TEMPERATURE])
         cg.add(parent.set_temperature_sensor(sens))
+
+    if CONF_MOTOR_TEMPERATURE in config:
+        sens = await sensor.new_sensor(config[CONF_MOTOR_TEMPERATURE])
+        cg.add(parent.set_motor_temperature_sensor(sens))
 
     if CONF_DC_BUS_VOLTAGE in config:
         sens = await sensor.new_sensor(config[CONF_DC_BUS_VOLTAGE])

@@ -42,6 +42,7 @@ class NavitasTAC : public PollingComponent, public esphome::ble_client::BLEClien
   float get_setup_priority() const override { return setup_priority::DATA; }
 
   void set_temperature_sensor(sensor::Sensor *sensor) { temperature_sensor_ = sensor; }
+  void set_motor_temperature_sensor(sensor::Sensor *sensor) { motor_temperature_sensor_ = sensor; }
   void set_voltage_sensor(sensor::Sensor *sensor) { voltage_sensor_ = sensor; }
   void set_current_sensor(sensor::Sensor *sensor) { current_sensor_ = sensor; }
   void set_motor_rpm_sensor(sensor::Sensor *sensor) { motor_rpm_sensor_ = sensor; }
@@ -60,6 +61,7 @@ class NavitasTAC : public PollingComponent, public esphome::ble_client::BLEClien
 
  protected:
   sensor::Sensor *temperature_sensor_{nullptr};
+  sensor::Sensor *motor_temperature_sensor_{nullptr};
   sensor::Sensor *voltage_sensor_{nullptr};
   sensor::Sensor *current_sensor_{nullptr};
   sensor::Sensor *motor_rpm_sensor_{nullptr};

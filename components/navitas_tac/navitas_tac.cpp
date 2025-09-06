@@ -14,9 +14,13 @@ const std::map<uint8_t, Parameter> NavitasTAC::parameter_map_ = {
     {0x00, {0x00, "Controller Temperature", 16.0f, "°C"}},  // PBTEMPC
     {0x01, {0x01, "DC Bus Voltage", 128.0f, "V"}},          // VBATVDC
     {0x02, {0x02, "Battery Current", 16.0f, "A"}},          // IBATADC
+    {0x25, {0x25, "Motor Temperature", 1.0f, "°C"}},        // MTTEMPC - address 37
 
     // Motor RPM for speed calculation (ROTORRPM at address 38 decimal = 0x26 hex)
     {0x26, {0x26, "Motor RPM", 1.0f, "RPM"}},  // ROTORRPM
+
+    // State of Charge (FilteredSOC_q12 at address 86 decimal = 0x56 hex)
+    {0x56, {0x56, "State of Charge", 40.96f, "%"}},  // FilteredSOC_q12 - address 86
 
     // Vehicle configuration parameters for speed calculation
     {0x9B, {0x9B, "Tire Diameter", 64.0f, "inches"}},    // TIREDIAMETER - address 155
@@ -29,9 +33,10 @@ void NavitasTAC::setup() { ESP_LOGCONFIG(TAG, "Setting up Navitas TAC Controller
 
 void NavitasTAC::dump_config() {
   ESP_LOGCONFIG(TAG, "Navitas TAC Controller:");
-  LOG_SENSOR("  ", "Temperature", this->temperature_sensor_);
-  LOG_SENSOR("  ", "Voltage", this->voltage_sensor_);
-  LOG_SENSOR("  ", "Current", this->current_sensor_);
+  LOG_SENSOR("  ", "Controller Temperature", this->temperature_sensor_);
+  LOG_SENSOR("  ", "Motor Temperature", this->motor_temperature_sensor_);
+  LOG_SENSOR("  ", "DC Bus Voltage", this->voltage_sensor_);
+  LOG_SENSOR("  ", "Battery Current", this->current_sensor_);
   LOG_SENSOR("  ", "Motor RPM", this->motor_rpm_sensor_);
   LOG_SENSOR("  ", "Speed", this->speed_sensor_);
   LOG_SENSOR("  ", "SOC", this->soc_sensor_);
@@ -157,7 +162,12 @@ void NavitasTAC::build_parameter_request_() {
   // Add parameters based on configured sensors
   if (this->temperature_sensor_ != nullptr) {
     this->requested_parameters_.push_back(0x00);  // PBTEMPC
-    ESP_LOGD(TAG, "Added temperature parameter (0x00)");
+    ESP_LOGD(TAG, "Added controller temperature parameter (0x00)");
+  }
+
+  if (this->motor_temperature_sensor_ != nullptr) {
+    this->requested_parameters_.push_back(0x25);  // MTTEMPC
+    ESP_LOGD(TAG, "Added motor temperature parameter (0x25)");
   }
 
   if (this->voltage_sensor_ != nullptr) {
@@ -181,6 +191,11 @@ void NavitasTAC::build_parameter_request_() {
       this->requested_parameters_.push_back(0x9D);  // MILESORKILOMETERS (157)
       ESP_LOGD(TAG, "Added vehicle config parameters for speed calculation");
     }
+  }
+
+  if (this->soc_sensor_ != nullptr) {
+    this->requested_parameters_.push_back(0x56);  // FilteredSOC_q12
+    ESP_LOGD(TAG, "Added SOC parameter (0x56)");
   }
 
   if (this->requested_parameters_.empty()) {
@@ -308,6 +323,8 @@ void NavitasTAC::parse_parameters_(const std::vector<uint8_t> &buffer, uint8_t d
         // Update appropriate sensors based on parameter address
         if (param_addr == 0x00 && this->temperature_sensor_ != nullptr && scaled_value < 200) {
           this->temperature_sensor_->publish_state(scaled_value);
+        } else if (param_addr == 0x25 && this->motor_temperature_sensor_ != nullptr && scaled_value < 200) {
+          this->motor_temperature_sensor_->publish_state(scaled_value);
         } else if (param_addr == 0x01 && this->voltage_sensor_ != nullptr && scaled_value > 0 && scaled_value < 100) {
           this->voltage_sensor_->publish_state(scaled_value);
         } else if (param_addr == 0x02 && this->current_sensor_ != nullptr && scaled_value < 500) {
@@ -321,6 +338,9 @@ void NavitasTAC::parse_parameters_(const std::vector<uint8_t> &buffer, uint8_t d
           if (this->speed_sensor_ != nullptr) {
             this->calculate_and_publish_speed_();
           }
+        } else if (param_addr == 0x56 && this->soc_sensor_ != nullptr && scaled_value >= 0 && scaled_value <= 100) {
+          // FilteredSOC_q12 received - publish state of charge
+          this->soc_sensor_->publish_state(scaled_value);
         } else if (param_addr == 0x9B) {
           // TIREDIAMETER received - store controller value
           this->controller_tire_diameter_ = scaled_value;
