@@ -1,9 +1,9 @@
 import esphome.codegen as cg
-import esphome.config_validation as cv
 from esphome.components import binary_sensor
-from esphome.const import CONF_ID, DEVICE_CLASS_CONNECTIVITY
+import esphome.config_validation as cv
+from esphome.const import DEVICE_CLASS_CONNECTIVITY
 
-from . import NavitasTAC, CONF_NAVITAS_TAC_ID
+from . import CONF_NAVITAS_TAC_ID, NavitasTAC
 
 DEPENDENCIES = ["navitas_tac"]
 

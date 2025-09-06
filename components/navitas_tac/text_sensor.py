@@ -1,9 +1,8 @@
 import esphome.codegen as cg
-import esphome.config_validation as cv
 from esphome.components import text_sensor
-from esphome.const import CONF_ID
+import esphome.config_validation as cv
 
-from . import NavitasTAC, CONF_NAVITAS_TAC_ID
+from . import CONF_NAVITAS_TAC_ID, NavitasTAC
 
 DEPENDENCIES = ["navitas_tac"]
 
