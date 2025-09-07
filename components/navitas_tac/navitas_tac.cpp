@@ -22,6 +22,9 @@ const std::map<uint8_t, Parameter> NavitasTAC::parameter_map_ = {
     // State of Charge (FilteredSOC_q12 at address 86 decimal = 0x56 hex)
     {0x56, {0x56, "State of Charge", 40.96f, "%"}},  // FilteredSOC_q12 - address 86
 
+    // Switch states (SWITCHBITS at address 200 decimal = 0xC8 hex)
+    {0xC8, {0xC8, "Switch Bits", 1.0f, ""}},  // SWITCHBITS - address 200
+
     // Vehicle configuration parameters for speed calculation
     {0x9B, {0x9B, "Tire Diameter", 64.0f, "inches"}},    // TIREDIAMETER - address 155
     {0x9C, {0x9C, "Rear Axle Ratio", 128.0f, "ratio"}},  // REARAXLERATIO - address 156
@@ -41,6 +44,7 @@ void NavitasTAC::dump_config() {
   LOG_SENSOR("  ", "Speed", this->speed_sensor_);
   LOG_SENSOR("  ", "SOC", this->soc_sensor_);
   LOG_TEXT_SENSOR("  ", "State", this->state_sensor_);
+  LOG_TEXT_SENSOR("  ", "Gear", this->gear_sensor_);
   LOG_BINARY_SENSOR("  ", "Connected", this->connected_sensor_);
 
   if (this->speed_sensor_ != nullptr) {
@@ -198,6 +202,11 @@ void NavitasTAC::build_parameter_request_() {
     ESP_LOGD(TAG, "Added SOC parameter (0x56)");
   }
 
+  if (this->gear_sensor_ != nullptr) {
+    this->requested_parameters_.push_back(0xC8);  // SWITCHBITS
+    ESP_LOGD(TAG, "Added gear state parameter (0xC8)");
+  }
+
   if (this->requested_parameters_.empty()) {
     ESP_LOGW(TAG, "No parameters configured for monitoring");
     return;
@@ -341,6 +350,28 @@ void NavitasTAC::parse_parameters_(const std::vector<uint8_t> &buffer, uint8_t d
         } else if (param_addr == 0x56 && this->soc_sensor_ != nullptr && scaled_value >= 0 && scaled_value <= 100) {
           // FilteredSOC_q12 received - publish state of charge
           this->soc_sensor_->publish_state(scaled_value);
+        } else if (param_addr == 0xC8 && this->gear_sensor_ != nullptr) {
+          // SWITCHBITS received - parse gear state (following Navitas JavaScript logic)
+          uint16_t switch_bits = (uint16_t)scaled_value;
+          
+          std::string gear_state;
+          if ((switch_bits & 0x0006) == 0x0006) {
+            // Both direction switches on - Neutral
+            gear_state = "Neutral";
+          } else if ((switch_bits & 0x0002) == 0x0002) {
+            // Forward switch only - Forward
+            gear_state = "Forward";
+          } else if ((switch_bits & 0x0004) == 0x0004) {
+            // Reverse switch only - Reverse  
+            gear_state = "Reverse";
+          } else {
+            // Neither switch on - Neutral
+            gear_state = "Neutral";
+          }
+          
+          ESP_LOGD(TAG, "Gear state: %s (switch_bits=0x%04X)", 
+                   gear_state.c_str(), switch_bits);
+          this->gear_sensor_->publish_state(gear_state);
         } else if (param_addr == 0x9B) {
           // TIREDIAMETER received - store controller value
           this->controller_tire_diameter_ = scaled_value;

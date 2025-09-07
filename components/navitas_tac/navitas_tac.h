@@ -49,6 +49,7 @@ class NavitasTAC : public PollingComponent, public esphome::ble_client::BLEClien
   void set_speed_sensor(sensor::Sensor *sensor) { speed_sensor_ = sensor; }
   void set_soc_sensor(sensor::Sensor *sensor) { soc_sensor_ = sensor; }
   void set_state_sensor(text_sensor::TextSensor *sensor) { state_sensor_ = sensor; }
+  void set_gear_sensor(text_sensor::TextSensor *sensor) { gear_sensor_ = sensor; }
   void set_connected_sensor(binary_sensor::BinarySensor *sensor) { connected_sensor_ = sensor; }
 
   // Vehicle configuration for speed calculation
@@ -68,6 +69,7 @@ class NavitasTAC : public PollingComponent, public esphome::ble_client::BLEClien
   sensor::Sensor *speed_sensor_{nullptr};
   sensor::Sensor *soc_sensor_{nullptr};
   text_sensor::TextSensor *state_sensor_{nullptr};
+  text_sensor::TextSensor *gear_sensor_{nullptr};
   binary_sensor::BinarySensor *connected_sensor_{nullptr};
 
   // Protocol state

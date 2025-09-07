@@ -1,9 +1,11 @@
 import esphome.codegen as cg
-import esphome.config_validation as cv
 from esphome.components import ble_client
+import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ["ble_client"]
+
+AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor"]
 
 navitas_tac_ns = cg.esphome_ns.namespace("navitas_tac")
 NavitasTAC = navitas_tac_ns.class_(

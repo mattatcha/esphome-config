@@ -7,11 +7,13 @@ from . import CONF_NAVITAS_TAC_ID, NavitasTAC
 DEPENDENCIES = ["navitas_tac"]
 
 CONF_STATE = "state"
+CONF_GEAR = "gear"
 
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_NAVITAS_TAC_ID): cv.use_id(NavitasTAC),
         cv.Optional(CONF_STATE): text_sensor.text_sensor_schema(),
+        cv.Optional(CONF_GEAR): text_sensor.text_sensor_schema(),
     }
 )
 
@@ -22,3 +24,7 @@ async def to_code(config):
     if CONF_STATE in config:
         sens = await text_sensor.new_text_sensor(config[CONF_STATE])
         cg.add(parent.set_state_sensor(sens))
+
+    if CONF_GEAR in config:
+        sens = await text_sensor.new_text_sensor(config[CONF_GEAR])
+        cg.add(parent.set_gear_sensor(sens))
