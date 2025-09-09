@@ -91,68 +91,12 @@ display:
         - 21 #g7
 
 touchscreen:
-  id: my_touch_screen_test
+  id: touch_screen
   platform: gt911
   interrupt_pin: ${TP_IRQ}
-
-esp32_ble_tracker:
-  scan_parameters:
-    active: false
-  # scan_parameters:
-  #   continuous: false
-  # on_ble_advertise:
-  #   then:
-  #     - lambda: |-
-  #         if (x.get_name().rfind("TAC_", 0) == 0) {
-  #           ESP_LOGI("ble_adv", "TAC_0750700073 found");
-  #           ESP_LOGI("ble_adv", "  Name: %s", x.get_name().c_str());
-  #           ESP_LOGI("ble_adv", "  MAC address: %s", x.address_str().c_str());
-  #           ESP_LOGI("ble_adv", "  Advertised service UUIDs:");
-  #           for (auto uuid : x.get_service_uuids()) {
-  #             ESP_LOGI("ble_adv", "    - %s", uuid.to_string().c_str());
-  #           }
-  #         }
-  #         if (x.get_name().rfind("AP21S002L21S300A", 0) == 0) {
-  #           ESP_LOGI("ble_adv", "New JBD-BMS found");
-  #           ESP_LOGI("ble_adv", "  Name: %s", x.get_name().c_str());
-  #           ESP_LOGI("ble_adv", "  MAC address: %s", x.address_str().c_str());
-  #           ESP_LOGD("ble_adv", "  Advertised service UUIDs:");
-  #           for (auto uuid : x.get_service_uuids()) {
-  #             ESP_LOGD("ble_adv", "    - %s", uuid.to_string().c_str());
-  #           }
-  #         } else {
-  #            ESP_LOGI("ble_adv", x.get_name().c_str());
-  #         }
 
 globals:
   - id: demo_mode
     type: bool
     restore_value: no
     initial_value: "false"
-# interval:
-#   - interval: 5s
-#     then:
-#       - if:
-#           condition:
-#             lambda: "return id(demo_mode);"
-#           then:
-#             # Start: 0xDD 0x03 0x00 0x1D
-#             - lambda: |-
-#                 id(bms1).on_jbd_bms_data(0x03, {
-#                   0x06, 0x18, 0x00, 0x00, 0x01, 0xF2, 0x01, 0xF4, 0x00, 0x00, 0x2C, 0x7C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-#                   0x80, 0x64, 0x03, 0x04, 0x03, 0x0B, 0x8B, 0x0B, 0x8A, 0x0B, 0x84
-#                 });
-#             # End: 0xFA 0x8D 0x77
-#             - delay: 1s
-#             # Start: 0xDD 0x04 0x00 0x08
-#             - lambda: |-
-#                 id(bms1).on_jbd_bms_data(0x04, {0x0F, 0x45, 0x0F, 0x3D, 0x0F, 0x37, 0x0F, 0x3D});
-#             # End: 0xFE 0xC6 0x77
-#             - delay: 1s
-#             # Start: 0xDD 0x05 0x00 0x19
-#             - lambda: |-
-#                 id(bms1).on_jbd_bms_data(0x05, {
-#                   0x4A, 0x42, 0x44, 0x2D, 0x53, 0x50, 0x30, 0x34, 0x53, 0x30, 0x33, 0x34, 0x2D, 0x4C, 0x34, 0x53, 0x2D, 0x32,
-#                   0x30, 0x30, 0x41, 0x2D, 0x42, 0x2D, 0x55
-#                 });
-#             # End: 0xFA, 0x08, 0x77

@@ -15,30 +15,30 @@ current:
   filters:
     - delta: 0.05
   on_value:
-      - if:
-          condition:
-            lambda: |-
-              return x > 0;
-          then:
-            - sensor.template.publish:
-                id: bms_${bms_number}_max_charge_current
-                state: !lambda |-
-                  static float max_charge = 0.0;
-                  if (x > max_charge) {
-                    max_charge = x;
-                    return max_charge;
-                  }
-                  return {};
-          else:
-            - sensor.template.publish:
-                id: bms_${bms_number}_max_discharge_current
-                state: !lambda |-
-                  static float max_discharge = 0.0;
-                  if (x < max_discharge) {
-                    max_discharge = x;
-                    return max_discharge;
-                  }
-                  return {};
+    - if:
+        condition:
+          lambda: |-
+            return x > 0;
+        then:
+          - sensor.template.publish:
+              id: bms_${bms_number}_max_charge_current
+              state: !lambda |-
+                static float max_charge = 0.0;
+                if (x > max_charge) {
+                  max_charge = x;
+                  return max_charge;
+                }
+                return {};
+        else:
+          - sensor.template.publish:
+              id: bms_${bms_number}_max_discharge_current
+              state: !lambda |-
+                static float max_discharge = 0.0;
+                if (x < max_discharge) {
+                  max_discharge = x;
+                  return max_discharge;
+                }
+                return {};
 
 power:
   name: ${bms_number} Power
@@ -66,27 +66,28 @@ battery_cycle_capacity:
 
 total_voltage:
   name: ${bms_number} Total voltage
+  id: bms_${bms_number}_voltage
   disabled_by_default: true
 
   filters:
     - delta: 0.01
   on_value:
-      - sensor.template.publish:
-          id: bms_${bms_number}_max_voltage
-          state: !lambda |-
-            static float max_voltage = 0.0;
-            if (x > max_voltage) {
-              max_voltage = x;
-            }
-            return max_voltage;
-      - sensor.template.publish:
-          id: bms_${bms_number}_min_voltage
-          state: !lambda |-
-            static float min_voltage = 0.0;
-            if (x < min_voltage || min_voltage == 0.0) {
-              min_voltage = x;
-            }
-            return min_voltage;
+    - sensor.template.publish:
+        id: bms_${bms_number}_max_voltage
+        state: !lambda |-
+          static float max_voltage = 0.0;
+          if (x > max_voltage) {
+            max_voltage = x;
+          }
+          return max_voltage;
+    - sensor.template.publish:
+        id: bms_${bms_number}_min_voltage
+        state: !lambda |-
+          static float min_voltage = 0.0;
+          if (x < min_voltage || min_voltage == 0.0) {
+            min_voltage = x;
+          }
+          return min_voltage;
 average_cell_voltage:
   name: ${bms_number} Average cell voltage
   id: bms_${bms_number}_average_cell_voltage

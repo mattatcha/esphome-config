@@ -2,95 +2,97 @@
     align: CENTER
     width: 100%
     height: 100%
-    pad_all: 3
+    pad_all: 0
     bg_opa: TRANSP
     border_opa: TRANSP
+    scrollable: false
     layout:
       type: FLEX
-      flex_flow: COLUMN_WRAP
+      flex_flow: COLUMN
+      flex_align_main: CENTER
       flex_align_cross: CENTER
-      pad_row: 6
-      pad_column: 8
+      pad_row: 10
     widgets:
-      - label:
-          text: "Remaining Capacity"
+      # Status info
       - obj:
-          align: center
-          height: 380
-          width: 380
-          bg_color: 0xFFFFFF
-          border_width: 0
-          pad_all: 14
+          width: 100%
+          height: 60
+          bg_opa: TRANSP
+          border_opa: TRANSP
+          pad_left: 40
+          pad_right: 40
+          layout:
+            type: FLEX
+            flex_flow: ROW
+            flex_align_main: SPACE_BETWEEN
+            flex_align_cross: CENTER
           widgets:
-            - meter:
-                height: 100%
-                width: 100%
-                border_width: 0
-                scales:
-                  - range_from: 200
-                    range_to: -400
-                    angle_range: 240
-                    rotation: 150
-                    ticks:
-                      count: 51
-                      length: 3
-                      major:
-                        stride: 5
-                        length: 13
-                        label_gap: 25
-                    indicators:
-                      - arc:
-                          start_value: -275
-                          end_value: -400
-                          # color red
-                          color: 0xFF0000
-                          # end_value:
-                      # - line:
-                      #     id: temperature_needle
-                      #     width: 2
-                      #     color: 0xFF0000
-                      #     r_mod: -4
-                      - tick_style:
-                          start_value: 175
-                          end_value: 0
-                          # color soft green
-                          color_start: 0x00FF00
-                          color_end: 0xbd0000 #0000FF
-                  - range_from: -200
-                    range_to: 350
-                    angle_range: 150
-                    ticks:
-                      count: 0
-                    indicators:
-                      - line:
-                          id: temperature_needle
-                          width: 8
-                          r_mod: 2
-                          value: -150
-
-            - obj: # to cover the middle part of meter indicator line
-                height: 200
-                width: 200
-                radius: 73
+            - label:
+                id: gear_label
+                text: "N"
+                text_font: montserrat_20
+                text_color: 0x00FF88
+            - label:
+                text: "READY"
+                text_font: montserrat_20
+                text_color: 0x00FF88
+            - label:
+                text: "50.1V"
+                text_font: montserrat_14
+                text_color: 0xFFFFFF
+      # Large digital speed display
+      - obj:
+          width: 500
+          height: 300
+          bg_color: 0x1A1A2E
+          bg_grad_color: 0x16213E
+          bg_grad_dir: VER
+          border_width: 3
+          border_color: 0x4DA6FF
+          radius: 15
+          align: CENTER
+          widgets:
+            - label:
+                id: speed_label
                 align: CENTER
-                border_width: 0
-                pad_all: 0
-                bg_color: 0xFFFFFF
-      # - label:
-      #     id: bms_1_remaining_capacity_label
-      # - label:
-      #     id: bms_1_soc_label
-      # - label:
-      #     id: bms_1_voltage_label
-      # - label:
-      #     text_font: montserrat_48
-      #     id: bms_1_current_label
-      # - label:
-      #     id: bms_2_remaining_capacity_label
-      # - label:
-      #     id: bms_2_soc_label
-      # - label:
-      #     id: bms_2_voltage_label
-      # - label:
-      #     text_font: montserrat_48
-      #     id: bms_2_current_label
+                y: -60
+                text: "0.0"
+                text_font: montserrat_140
+                text_color: 0x4DA6FF
+                text_align: CENTER
+            - label:
+                align: CENTER
+                y: -10
+                text: "mph"
+                text_font: montserrat_14
+                text_color: 0x888888
+            - label:
+                align: CENTER
+                y: 20
+                text: "SPEED"
+                text_font: montserrat_14
+                text_color: 0x666666
+      
+      # Current display
+      - obj:
+          width: 300
+          height: 80
+          bg_color: 0x2A1A1A
+          border_width: 2
+          border_color: 0xFF6B35
+          radius: 10
+          align: CENTER
+          widgets:
+            - label:
+                id: current_label
+                align: CENTER
+                y: -10
+                text: "0.0A"
+                text_font: montserrat_20
+                text_color: 0xFF6B35
+            - label:
+                align: CENTER
+                y: 15
+                text: "CURRENT"
+                text_font: montserrat_10
+                text_color: 0x888888

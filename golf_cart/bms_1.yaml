@@ -23,9 +23,9 @@ esp32:
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: y
 
-web_server:
-  include_internal: true
-  port: 80
+# web_server:
+#   include_internal: true
+#   port: 80
 
 # led GPIO21
 
@@ -66,10 +66,10 @@ uart:
     tx_pin: 11
     rx_pin: 12
 
-modbus:
-  - uart_id: uart_modbus_server
-    id: modbus_server
-    role: server
+# modbus:
+#   - uart_id: uart_modbus_server
+#     id: modbus_server
+#     role: server
 
 udp:
   - addresses:
@@ -80,14 +80,21 @@ packet_transport:
   update_interval: 1s
   sensors:
     - bms_${bms_number}_current
+    - id: bms_${bms_number}_capacity_remaining
+      broadcast_id: bms_${bms_number}_caprem
     - id: bms_${bms_number}_state_of_charge
       broadcast_id: bms_${bms_number}_soc
+    - bms_${bms_number}_voltage
     - bms_${bms_number}_max_voltage
     - bms_${bms_number}_min_voltage
-    - bms_${bms_number}_delta_cell_voltage
-    - bms_${bms_number}_average_cell_voltage
-    - bms_${bms_number}_max_charge_current
-    - bms_${bms_number}_max_discharge_current
+    - id: bms_${bms_number}_delta_cell_voltage
+      broadcast_id: bms_${bms_number}_dcv
+    - id: bms_${bms_number}_average_cell_voltage
+      broadcast_id: bms_${bms_number}_acv
+    - id: bms_${bms_number}_max_charge_current
+      broadcast_id: bms_${bms_number}_max_cc
+    - id: bms_${bms_number}_max_discharge_current
+      broadcast_id: bms_${bms_number}_max_dc
     - id: bms_${bms_number}_cell_16_voltage_sensor
       broadcast_id: bms_${bms_number}_c16v
     - id: bms_${bms_number}_cell_1_voltage_sensor
@@ -120,95 +127,94 @@ packet_transport:
       broadcast_id: bms_${bms_number}_c14v
     - id: bms_${bms_number}_cell_15_voltage_sensor
       broadcast_id: bms_${bms_number}_c15v
+# modbus_controller:
+#   - modbus_id: modbus_server
+#     address: 0x1
+#     server_registers:
+#       - address: 0x0002
+#         value_type: U_WORD
+#         read_lambda: |-
+#           return id(bms_${bms_number}_current).state;
+#       - address: 0x0003
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_state_of_charge).state;
 
-modbus_controller:
-  - modbus_id: modbus_server
-    address: 0x1
-    server_registers:
-      - address: 0x0002
-        value_type: U_WORD
-        read_lambda: |-
-          return id(bms_${bms_number}_current).state;
-      - address: 0x0003
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_state_of_charge).state;
+#       - address: 0x0090
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_max_voltage).state;
 
-      - address: 0x0090
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_max_voltage).state;
+#       - address: 0x0092
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_average_cell_voltage).state;
 
-      - address: 0x0092
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_average_cell_voltage).state;
+#       - address: 0x0100
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_1_voltage_sensor).state;
+#       - address: 0x0102
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_2_voltage_sensor).state;
+#       - address: 0x0104
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_3_voltage_sensor).state;
+#       - address: 0x0106
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_4_voltage_sensor).state;
+#       - address: 0x0108
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_5_voltage_sensor).state;
+#       - address: 0x0110
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_6_voltage_sensor).state;
 
-      - address: 0x0100
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_1_voltage_sensor).state;
-      - address: 0x0102
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_2_voltage_sensor).state;
-      - address: 0x0104
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_3_voltage_sensor).state;
-      - address: 0x0106
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_4_voltage_sensor).state;
-      - address: 0x0108
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_5_voltage_sensor).state;
-      - address: 0x0110
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_6_voltage_sensor).state;
-
-      - address: 0x0112
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_7_voltage_sensor).state;
-      - address: 0x0114
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_8_voltage_sensor).state;
-      - address: 0x0116
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_9_voltage_sensor).state;
-      - address: 0x0118
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_10_voltage_sensor).state;
-      - address: 0x0120
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_11_voltage_sensor).state;
-      - address: 0x0122
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_12_voltage_sensor).state;
-      - address: 0x0124
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_13_voltage_sensor).state;
-      - address: 0x0126
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_14_voltage_sensor).state;
-      - address: 0x0128
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_15_voltage_sensor).state;
-      - address: 0x0130
-        value_type: FP32
-        read_lambda: |-
-          return id(bms_${bms_number}_cell_16_voltage_sensor).state;
+#       - address: 0x0112
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_7_voltage_sensor).state;
+#       - address: 0x0114
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_8_voltage_sensor).state;
+#       - address: 0x0116
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_9_voltage_sensor).state;
+#       - address: 0x0118
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_10_voltage_sensor).state;
+#       - address: 0x0120
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_11_voltage_sensor).state;
+#       - address: 0x0122
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_12_voltage_sensor).state;
+#       - address: 0x0124
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_13_voltage_sensor).state;
+#       - address: 0x0126
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_14_voltage_sensor).state;
+#       - address: 0x0128
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_15_voltage_sensor).state;
+#       - address: 0x0130
+#         value_type: FP32
+#         read_lambda: |-
+#           return id(bms_${bms_number}_cell_16_voltage_sensor).state;
 
 # sensor:
 #   - platform: combination
