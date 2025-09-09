@@ -1,25 +1,37 @@
 esphome:
   platformio_options:
-    build_flags: "-DBOARD_HAS_PSRAM"
-    board_build.arduino.memory_type: qio_opi
-    board_build.flash_mode: dio
     board_upload.maximum_ram_size: 524288
 
 esp32:
   board: esp32-s3-devkitc-1
   variant: esp32s3
   flash_size: 8MB
+  cpu_frequency: 240MHZ
+
   framework:
     type: esp-idf
+
+    advanced:
+      enable_idf_experimental_features: true
+      execute_from_psram: True
+      compiler_optimization: PERF
     sdkconfig_options:
-      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
       CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: y
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: y
 
+      CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM: y
+      CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1: y
+psram:
+  mode: octal
+  speed: 120MHz
+
 wifi:
-  # output_power: 10
   reboot_timeout: 0s # disable reboot on wifi disconnect
+
+api:
+  reboot_timeout: 0s # disable reboot on api disconnect
 
 logger:
   # baud_rate: 0
@@ -32,10 +44,6 @@ external_components:
 i2c:
   sda: ${I2C_SDA}
   scl: ${I2C_SCL}
-
-psram:
-  mode: octal
-  speed: 80MHz
 
 display:
   - platform: rpi_dpi_rgb
