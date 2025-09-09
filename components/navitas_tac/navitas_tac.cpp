@@ -339,10 +339,14 @@ void NavitasTAC::parse_parameters_(const std::vector<uint8_t> &buffer, uint8_t d
         } else if (param_addr == 0x02 && this->current_sensor_ != nullptr && scaled_value < 500) {
           this->current_sensor_->publish_state(scaled_value);
         } else if (param_addr == 0x26) {
-          // ROTORRPM received - publish to motor RPM sensor and calculate speed
-          this->current_rpm_ = scaled_value;
+          // ROTORRPM received - handle as signed integer for reverse detection
+          // Reinterpret the 16-bit value as signed (two's complement) to handle negative RPM
+          int16_t signed_value = (int16_t)value;  // Reinterpret bits as signed
+          float signed_rpm = signed_value / param.scale_factor;
+          
+          this->current_rpm_ = signed_rpm;  // Store signed RPM value
           if (this->motor_rpm_sensor_ != nullptr) {
-            this->motor_rpm_sensor_->publish_state(scaled_value);
+            this->motor_rpm_sensor_->publish_state(signed_rpm);
           }
           if (this->speed_sensor_ != nullptr) {
             this->calculate_and_publish_speed_();
@@ -514,6 +518,8 @@ void NavitasTAC::calculate_and_publish_speed_() {
       (this->controller_rear_axle_ratio_ > 0) ? this->controller_rear_axle_ratio_ : this->rear_axle_ratio_;
   bool use_kilometers = this->vehicle_config_received_ ? this->controller_use_kilometers_ : this->use_kilometers_;
 
+  // Speed calculation matching NavitasMotorControllerModel.js:726-742
+  // Use absolute value of RPM for speed calculation (direction is handled by gear sensor)
   const float inchesPerMinuteToMPH = 60.0f * 2.0f * M_PI * 1.57828e-5f;
   float speed = inchesPerMinuteToMPH * (fabs(this->current_rpm_) * tire_diameter / 2.0f) / rear_axle_ratio;
 
