@@ -56,7 +56,7 @@ ble_client:
 navitas_tac:
   ble_client_id: navitas_tac_ble_client
   id: tac_controller
-  update_interval: 500ms
+  update_interval: 250ms
 
 udp:
 

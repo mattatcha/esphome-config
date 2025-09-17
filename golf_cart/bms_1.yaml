@@ -8,18 +8,14 @@ esphome:
     build_flags: "-DBOARD_HAS_PSRAM"
     board_build.arduino.memory_type: qio_opi
     board_build.flash_mode: dio
-    # board_upload.maximum_ram_size: 524288
 
 esp32:
   board: esp32-s3-devkitc-1
-  # board: lolin_s3_mini
   variant: esp32s3
   flash_size: 4MB
   framework:
     type: esp-idf
     sdkconfig_options:
-      #   CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
-      #   CONFIG_ESP32S3_DATA_CACHE_64KB: y
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: y
 
@@ -32,6 +28,9 @@ esp32:
 wifi:
   output_power: 10
   reboot_timeout: 0s # disable reboot on wifi disconnect
+
+api:
+  reboot_timeout: 0s # disable reboot on api disconnect
 
 logger:
   # baud_rate: 0
@@ -127,95 +126,6 @@ packet_transport:
       broadcast_id: bms_${bms_number}_c14v
     - id: bms_${bms_number}_cell_15_voltage_sensor
       broadcast_id: bms_${bms_number}_c15v
-# modbus_controller:
-#   - modbus_id: modbus_server
-#     address: 0x1
-#     server_registers:
-#       - address: 0x0002
-#         value_type: U_WORD
-#         read_lambda: |-
-#           return id(bms_${bms_number}_current).state;
-#       - address: 0x0003
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_state_of_charge).state;
-
-#       - address: 0x0090
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_max_voltage).state;
-
-#       - address: 0x0092
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_average_cell_voltage).state;
-
-#       - address: 0x0100
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_1_voltage_sensor).state;
-#       - address: 0x0102
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_2_voltage_sensor).state;
-#       - address: 0x0104
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_3_voltage_sensor).state;
-#       - address: 0x0106
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_4_voltage_sensor).state;
-#       - address: 0x0108
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_5_voltage_sensor).state;
-#       - address: 0x0110
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_6_voltage_sensor).state;
-
-#       - address: 0x0112
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_7_voltage_sensor).state;
-#       - address: 0x0114
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_8_voltage_sensor).state;
-#       - address: 0x0116
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_9_voltage_sensor).state;
-#       - address: 0x0118
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_10_voltage_sensor).state;
-#       - address: 0x0120
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_11_voltage_sensor).state;
-#       - address: 0x0122
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_12_voltage_sensor).state;
-#       - address: 0x0124
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_13_voltage_sensor).state;
-#       - address: 0x0126
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_14_voltage_sensor).state;
-#       - address: 0x0128
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_15_voltage_sensor).state;
-#       - address: 0x0130
-#         value_type: FP32
-#         read_lambda: |-
-#           return id(bms_${bms_number}_cell_16_voltage_sensor).state;
-
 # sensor:
 #   - platform: combination
 #     type: sum
@@ -231,17 +141,3 @@ packet_transport:
 #     sources:
 #       - source: bms_1_max_discharge_current
 #       - source: bms_2_max_discharge_current
-
-# sensor:
-#   - platform: modbus_controller
-#     id: evse_voltage_l1
-#     modbus_controller_id: modbus_evse
-#     name: "EVSE voltage L1"
-#     register_type: holding
-#     address: 0x0000
-#     device_class: voltage
-#     value_type: U_WORD
-#     accuracy_decimals: 3
-#     unit_of_measurement: V
-#     filters:
-#       - multiply: 0.1
