@@ -1,0 +1,25 @@
+script:
+  - id: dose_${chemical}
+    parameters:
+      dose_ml: float
+    then:
+      - if:
+          condition:
+            switch.is_off: pump
+          then:
+            - logger.log: "Cannot dose ${chemical} - pool pump must be running"
+          else:
+            - logger.log: "Dosing ${chemical}..."
+            - stepper.set_target:
+                id: ${pump_id}
+                target: !lambda "return id(${pump_id}).current_position + (dose_ml * id(${chemical}_pump_calibration));"
+            - while:
+                condition:
+                  lambda: |-
+                    return id(${pump_id}).current_position != id(${pump_id}).target_position;
+                then:
+                  - logger.log:
+                      format: "${pump_id} position : %d"
+                      args: ["id(${pump_id}).current_position"]
+                  - delay: 5s
+            - logger.log: "${chemical} dosing done!"

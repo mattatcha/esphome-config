@@ -5,6 +5,18 @@ substitutions:
 packages:
   common: !include .common.yaml
 
+  dose_chlorine_script: !include
+    file: pool-controller/dose-script.yaml
+    vars:
+      chemical: chlorine
+      pump_id: chlorinator
+
+  dose_acid_script: !include
+    file: pool-controller/dose-script.yaml
+    vars:
+      chemical: acid
+      pump_id: muratic_acid
+
 esp32:
   board: esp32dev
   framework:
@@ -61,19 +73,15 @@ api:
         dose_ml: float
       then:
         - script.execute:
-            id: dose_chemical
-            pump_id: "chlorinator"
+            id: dose_chlorine
             dose_ml: !lambda "return dose_ml;"
-            steps_per_ml: !lambda "return id(chlorine_pump_calibration);"
     - action: dose_acid
       variables:
         dose_ml: float
       then:
         - script.execute:
-            id: dose_chemical
-            pump_id: "muratic_acid"
+            id: dose_acid
             dose_ml: !lambda "return dose_ml;"
-            steps_per_ml: !lambda "return id(acid_pump_calibration);"
 
 mapping:
   - id: pump_stepper_map
@@ -88,35 +96,6 @@ mapping:
     entries:
       chlorinator: chlorine
       muratic_acid: acid
-
-script:
-  - id: dose_chemical
-    parameters:
-      pump_id: string
-      dose_ml: float
-      steps_per_ml: float
-    then:
-      - if:
-          condition:
-            lambda: "return !id(pump).state;"
-          then:
-            - logger.log: "Cannot dose - pool pump must be running"
-          else:
-            - lambda: |-
-                auto chemical = id(pump_chemical_map)[pump_id];
-                ESP_LOGI("dose_chemical", "Dosing %.1f mL of %s (steps per mL: %.1f)", dose_ml, chemical.c_str(), steps_per_ml);
-            - lambda: |-
-                auto stepper_component = id(pump_stepper_map)[pump_id];
-                if (stepper_component) {
-                  stepper_component->set_target(stepper_component->current_position + (dose_ml * steps_per_ml));
-                  while (stepper_component->current_position != stepper_component->target_position) {
-                    delay(5000);
-                  }
-                  auto chemical = id(pump_chemical_map)[pump_id];
-                  ESP_LOGI("dose_chemical", "%s dosing complete", chemical.c_str());
-                } else {
-                  ESP_LOGE("dose_chemical", "Invalid pump ID: %s", pump_id.c_str());
-                }
 
 esphome:
   on_boot:
@@ -153,9 +132,6 @@ i2c:
 wifi:
   power_save_mode: none
   reboot_timeout: 1h
-
-web_server:
-  port: 80
 
 logger:
   level: DEBUG
