@@ -22,6 +22,101 @@ api:
       then:
         - lambda: |-
             id(orp_ezo).set_calibration_generic(222);
+    - action: calibrate_chlorine_pump
+      variables:
+        rotations: float
+      then:
+        - logger.log:
+            format: "Starting chlorine pump calibration with %d rotations"
+            args: ["rotations"]
+        - stepper.set_target:
+            id: chlorinator
+            target: !lambda "return id(chlorinator).current_position + (rotations * 200);"
+        - while:
+            condition:
+              lambda: |-
+                return id(chlorinator).current_position != id(chlorinator).target_position;
+            then:
+              - delay: 100ms
+        - logger.log: "Chlorine pump calibration complete"
+    - action: calibrate_acid_pump
+      variables:
+        rotations: float
+      then:
+        - logger.log:
+            format: "Starting acid pump calibration with %d rotations"
+            args: ["rotations"]
+        - stepper.set_target:
+            id: muratic_acid
+            target: !lambda "return id(muratic_acid).current_position + (rotations * 200);"
+        - while:
+            condition:
+              lambda: |-
+                return id(muratic_acid).current_position != id(muratic_acid).target_position;
+            then:
+              - delay: 100ms
+        - logger.log: "Acid pump calibration complete"
+    - action: dose_chlorine
+      variables:
+        dose_ml: float
+      then:
+        - script.execute:
+            id: dose_chemical
+            pump_id: "chlorinator"
+            dose_ml: !lambda "return dose_ml;"
+            steps_per_ml: !lambda "return id(chlorine_pump_calibration);"
+    - action: dose_acid
+      variables:
+        dose_ml: float
+      then:
+        - script.execute:
+            id: dose_chemical
+            pump_id: "muratic_acid"
+            dose_ml: !lambda "return dose_ml;"
+            steps_per_ml: !lambda "return id(acid_pump_calibration);"
+
+mapping:
+  - id: pump_stepper_map
+    from: string
+    to: stepper::Stepper
+    entries:
+      chlorinator: chlorinator
+      muratic_acid: muratic_acid
+  - id: pump_chemical_map
+    from: string
+    to: string
+    entries:
+      chlorinator: chlorine
+      muratic_acid: acid
+
+script:
+  - id: dose_chemical
+    parameters:
+      pump_id: string
+      dose_ml: float
+      steps_per_ml: float
+    then:
+      - if:
+          condition:
+            lambda: "return !id(pump).state;"
+          then:
+            - logger.log: "Cannot dose - pool pump must be running"
+          else:
+            - lambda: |-
+                auto chemical = id(pump_chemical_map)[pump_id];
+                ESP_LOGI("dose_chemical", "Dosing %.1f mL of %s (steps per mL: %.1f)", dose_ml, chemical.c_str(), steps_per_ml);
+            - lambda: |-
+                auto stepper_component = id(pump_stepper_map)[pump_id];
+                if (stepper_component) {
+                  stepper_component->set_target(stepper_component->current_position + (dose_ml * steps_per_ml));
+                  while (stepper_component->current_position != stepper_component->target_position) {
+                    delay(5000);
+                  }
+                  auto chemical = id(pump_chemical_map)[pump_id];
+                  ESP_LOGI("dose_chemical", "%s dosing complete", chemical.c_str());
+                } else {
+                  ESP_LOGE("dose_chemical", "Invalid pump ID: %s", pump_id.c_str());
+                }
 
 esphome:
   on_boot:
@@ -79,13 +174,19 @@ external_components:
   enn_pin: 13
   diag_pin: 32
 
-# api:
-#   actions:
-#     - action: dose_chlorine
-#       then:
-#         # - switch.turn_on: relay
-#         # - delay: 3h
-#         # - switch.turn_off: relay
+globals:
+  - id: pump_start_time
+    type: unsigned long
+    restore_value: no
+    initial_value: "0"
+  - id: chlorine_pump_calibration
+    type: unsigned long
+    restore_value: no
+    initial_value: "220"
+  - id: acid_pump_calibration
+    type: unsigned long
+    restore_value: no
+    initial_value: "565"
 
 tmc2209_hub:
 
@@ -145,7 +246,7 @@ button:
               #     position: 0
               - stepper.set_target:
                   id: chlorinator
-                  target: !lambda "return id(chlorinator).current_position + (int(id(chlorine_dose_amount).state) * 565);"
+                  target: !lambda "return id(chlorinator).current_position + (int(id(chlorine_dose_amount).state) * id(chlorine_pump_calibration));"
               - while:
                   condition:
                     lambda: |-
@@ -169,7 +270,7 @@ button:
               #     position: 0
               - stepper.set_target:
                   id: muratic_acid
-                  target: !lambda "return id(muratic_acid).current_position + (int(id(acid_dose_amount).state) * 565);"
+                  target: !lambda "return id(muratic_acid).current_position + (int(id(acid_dose_amount).state) * id(acid_pump_calibration));"
               - while:
                   condition:
                     lambda: |-
@@ -283,7 +384,7 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     lambda: |-
-      return id(chlorinator).current_position / 565.0;
+      return id(chlorinator).current_position / id(chlorine_pump_calibration);
     update_interval: 5s
 
   - platform: template
@@ -294,14 +395,8 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     lambda: |-
-      return id(muratic_acid).current_position / 565.0;
+      return id(muratic_acid).current_position / id(acid_pump_calibration);
     update_interval: 5s
-
-globals:
-  - id: pump_start_time
-    type: unsigned long
-    restore_value: no
-    initial_value: "0"
 
 switch:
   - platform: gpio
