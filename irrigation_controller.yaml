@@ -1,0 +1,131 @@
+substitutions:
+  device_name: irrigation_controller
+  friendly_name: Irrigation Controller
+
+# <<: !include .common.yaml
+
+packages:
+  common: !include .common.yaml
+
+esphome:
+  name: $device_name
+  platform: ESP32
+  board: nodemcu-32s
+
+globals:
+  - id: zones
+    type: std::vector<gpio::GPIOSwitch*>
+    restore_value: no
+    initial_value: "{ zone_1, zone_2, zone_3, zone_4, zone_5, zone_6, zone_7, zone_8 }"
+
+api:
+  services:
+    - service: run_zone
+      variables:
+        zone_num: int
+        duration: int
+      then:
+        - lambda: |-
+            id(zones)[zone_num]->turn_on();
+        - delay: !lambda "return duration;"
+        - lambda: |-
+            id(zones)[zone_num]->turn_off();
+
+logger:
+  level: INFO
+
+switch:
+  - name: Irrigation Zone 1
+    platform: gpio
+    pin:
+      number: GPIO16
+      inverted: true
+    id: zone_1
+    # Interlock to prevent more than one high flow zone active at a time
+    interlock: &interlock_group [zone_1, zone_2, zone_4, zone_5, zone_6, zone_7]
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_1
+
+  - name: Irrigation Zone 2
+    platform: gpio
+    pin:
+      number: GPIO17
+      inverted: true
+    id: zone_2
+    interlock: *interlock_group
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_2
+
+  - name: Irrigation Zone 3
+    platform: gpio
+    pin:
+      number: GPIO18
+      inverted: true
+    id: zone_3
+    on_turn_on:
+      then:
+        - delay: 30min
+        - switch.turn_off: zone_3
+
+  - name: Irrigation Zone 4
+    platform: gpio
+    pin:
+      number: GPIO19
+      inverted: true
+    id: zone_4
+    interlock: *interlock_group
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_4
+
+  - name: Irrigation Zone 5
+    platform: gpio
+    pin:
+      number: GPIO21
+      inverted: true
+    id: zone_5
+    interlock: *interlock_group
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_5
+
+  - name: Irrigation Zone 6
+    platform: gpio
+    pin:
+      number: GPIO22
+      inverted: true
+    id: zone_6
+    interlock: *interlock_group
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_6
+
+  - name: Irrigation Zone 7
+    platform: gpio
+    pin:
+      number: GPIO23
+      inverted: true
+    id: zone_7
+    interlock: *interlock_group
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_7
+
+  - name: Irrigation Zone 8
+    platform: gpio
+    pin:
+      number: GPIO25
+      inverted: true
+    id: zone_8
+    on_turn_on:
+      then:
+        - delay: 15min
+        - switch.turn_off: zone_8
