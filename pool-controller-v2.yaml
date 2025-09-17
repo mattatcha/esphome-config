@@ -384,8 +384,15 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     lambda: |-
-      return id(chlorinator).current_position / id(chlorine_pump_calibration);
-    update_interval: 5s
+      static float clorine_dosed = 0.0;
+
+      auto value = id(chlorinator).current_position / id(chlorine_pump_calibration);
+      if (value > clorine_dosed) {
+        clorine_dosed = value;
+        return clorine_dosed;
+      }
+      return {};
+    update_interval: 1s
 
   - platform: template
     name: "Total Acid Dosed"
@@ -395,8 +402,15 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     lambda: |-
-      return id(muratic_acid).current_position / id(acid_pump_calibration);
-    update_interval: 5s
+      static float acid_dosed = 0.0;
+
+      auto value = id(muratic_acid).current_position / id(acid_pump_calibration);
+      if (value > acid_dosed) {
+        acid_dosed = value;
+        return acid_dosed;
+      }
+      return {};
+    update_interval: 1s
 
 switch:
   - platform: gpio
