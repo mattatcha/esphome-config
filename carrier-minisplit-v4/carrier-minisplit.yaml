@@ -1,0 +1,91 @@
+substitutions:
+  device_name: master-minisplit
+  friendly_name: Master Mini Split
+
+packages:
+  common: !include ../.common.yaml
+
+esp32:
+  board: nodemcu-32s
+  framework:
+    type: arduino
+
+external_components:
+  - source: ./components
+
+# Wiring matches v1/v2: ESP TX -> GPIO16 -> transceiver DI, ESP RX <- GPIO17 <- transceiver RO.
+uart:
+  id: xye_bus
+  tx_pin: 16
+  rx_pin: 17
+  baud_rate: 4800
+  rx_buffer_size: 256
+  debug:
+    direction: BOTH
+    dummy_receiver: false
+    # Flush on idle timeout OR when 64 bytes accumulate — whichever comes first.
+    # This captures EVERY byte that hits the wire (TX and RX) as `>>>` / `<<<`
+    # log lines, even bytes that never form a valid frame (collisions, partial
+    # transmissions, the AC's `AA C5 …` broadcasts, etc.).
+    after:
+      timeout: 100ms
+      bytes: 64
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ' ');
+
+midea_xye:
+  id: xye
+  uart_id: xye_bus
+  # tx_enabled: true here would auto-start the handshake + polling at boot.
+  # While debugging we keep this false and use the "XYE Start TX" button below
+  # so we can watch the handshake fire in real time with an API client attached.
+  tx_enabled: false
+
+climate:
+  - platform: midea_xye
+    name: AC
+
+sensor:
+  - platform: midea_xye
+    t1_indoor:
+      name: T1 Indoor Air
+    t2_indoor_coil:
+      name: T2 Indoor Coil
+    t3_outdoor_coil:
+      name: T3 Outdoor Coil
+
+text_sensor:
+  - platform: midea_xye
+    fan_speed:
+      name: Fan Speed Actual
+
+# Experiment button: sends ONE C4-set frame with an obviously-different setpoint
+# (28 °C) while the original controller is still connected. Watch the controller's
+# display:
+#  - If it updates to 28 °C → the controller syncs from AC echoes; hybrid TX viable.
+#  - If it snaps back to its own value within ~250 ms → controller stomps us;
+#    full disconnect required for TX path.
+button:
+  - platform: template
+    name: "XYE Start TX"
+    on_press:
+      - lambda: id(xye).start_handshake_and_poll();
+  - platform: template
+    name: "XYE Stop TX"
+    on_press:
+      - lambda: id(xye).stop_tx();
+  - platform: template
+    name: "XYE One-Shot Set 28C"
+    on_press:
+      - lambda: |-
+          // mode=COOL(0x88), fan=AUTO(0x80), setpoint=28°C (0x40 + 28 = 0x5C), turbo=off
+          id(xye).send_one_shot_set(0x88, 0x80, 0x5C, false);
+
+wifi:
+  power_save_mode: none
+
+logger:
+  level: INFO
+  # The midea_xye component logs frames at INFO already; bus-level bytes
+  # arrive at the uart_debug tag (also INFO).

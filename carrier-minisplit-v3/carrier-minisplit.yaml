@@ -1,0 +1,115 @@
+substitutions:
+  device_name: master-minisplit
+  friendly_name: Master Mini Split
+
+packages:
+  common: !include ../.common.yaml
+  # Pulled from the local clone (not the GitHub URL) because the local repo
+  # carries uncommitted improvements (bootstrap interval + hasValidState
+  # gating) that aren't on github.com/wtahler/esphome-mideaXYE-rs485 yet.
+  # Switch back to a git source once those changes are pushed upstream.
+  midea_xye: !include ../../esphome-mideaXYE-rs485/esphome-mideaXYE.yaml
+
+esp32:
+  board: nodemcu-32s
+  framework:
+    type: arduino
+
+# xyeVars.h is kept local because `esphome.includes` requires a filesystem
+# path. It's also where RX_PIN / TX_PIN live, so per-device tweaks belong here.
+esphome:
+  includes:
+    - xyeVars.h
+  on_boot:
+    priority: 800
+    then:
+      - lambda: |-
+          mySerial.begin(4800, SERIAL_8N1, RX_PIN, TX_PIN);
+
+wifi:
+  power_save_mode: none
+
+logger:
+  # Global INFO so the upstream ESP_LOGI("custom", ...) lines come through.
+  # logs: can only make tags quieter than the global, not louder — so we
+  # keep INFO globally and dial the chattier framework tags down to WARN.
+  level: INFO
+  logs:
+    component: WARN
+    sensor: WARN
+    text_sensor: WARN
+    select: WARN
+    number: WARN
+    api: WARN
+    api.connection: WARN
+    wifi: WARN
+    ota: WARN
+    mdns: WARN
+    json: WARN
+
+# Bus monitor: the upstream lambdas write/read mySerial directly
+# (HardwareSerial, not the ESPHome uart: component), so uart.debug can't see
+# them. This sensor heartbeats every second and logs the buffers.
+#
+# Implemented as a template sensor (not an interval) because ESPHome 2026's
+# package merge replaces top-level lists wholesale, so an interval: here
+# would clobber the upstream bootstrap interval. Sensors merge by id.
+# Tag is "custom" to match the upstream lambdas (any "xye" tag would also
+# work — INFO global, no filter — but staying on one tag keeps grep simple).
+sensor:
+  - platform: template
+    name: xye_bus_monitor
+    id: xye_bus_monitor
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      static uint8_t last_rec[30] = {0};
+      static uint8_t last_send[16] = {0};
+      static uint32_t tick = 0;
+
+      int avail = mySerial.available();
+      ESP_LOGI("custom",
+        "[mon] t=%u avail=%d valid=%d waitResp=%d waitSend=%d newInp=%d wc=%u tc=%u",
+        (unsigned)tick, avail,
+        xyeVars.hasValidState ? 1 : 0,
+        xyeVars.waitingForResponse ? 1 : 0,
+        xyeVars.waitingToSend ? 1 : 0,
+        xyeVars.newInput ? 1 : 0,
+        (unsigned)xyeVars.waitCount,
+        (unsigned)xyeVars.sendTimeCount);
+
+      // Periodic queryData reminder so it survives the log ring buffer.
+      if (tick % 30 == 0) {
+        std::ostringstream oss;
+        oss << std::uppercase << std::hex << std::setfill('0');
+        for (uint8_t i = 0; i < 16; i++) {
+          if (i > 0) oss << ' ';
+          oss << std::setw(2) << static_cast<int>(xyeVars.queryData[i]);
+        }
+        ESP_LOGI("custom", "[mon] TX query bytes: %s", oss.str().c_str());
+      }
+
+      if (std::memcmp(last_rec, xyeVars.recData, 30) != 0) {
+        std::ostringstream oss;
+        oss << std::uppercase << std::hex << std::setfill('0');
+        for (uint8_t i = 0; i < 30; i++) {
+          if (i > 0) oss << ' ';
+          oss << std::setw(2) << static_cast<int>(xyeVars.recData[i]);
+        }
+        ESP_LOGI("custom", "[mon] RX changed: %s", oss.str().c_str());
+        std::memcpy(last_rec, xyeVars.recData, 30);
+      }
+
+      if (std::memcmp(last_send, xyeVars.sendData, 16) != 0) {
+        std::ostringstream oss;
+        oss << std::uppercase << std::hex << std::setfill('0');
+        for (uint8_t i = 0; i < 16; i++) {
+          if (i > 0) oss << ' ';
+          oss << std::setw(2) << static_cast<int>(xyeVars.sendData[i]);
+        }
+        ESP_LOGI("custom", "[mon] TX cmd changed: %s", oss.str().c_str());
+        std::memcpy(last_send, xyeVars.sendData, 16);
+      }
+
+      tick++;
+      return 0;
