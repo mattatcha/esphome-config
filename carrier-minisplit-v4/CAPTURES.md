@@ -80,15 +80,26 @@ All offsets are in the wire frame (including the `AA C0` header).
 
 | byte | meaning | encoding |
 |------|---------|----------|
-| 6 | constant `0x30` | header — semantics unknown |
-| 7 | AC address / unit ID | constant `0x14` on this unit |
+| 6 | constant `0x30` | header — semantics unknown (HomeOps also unknown) |
+| 7 | **capabilities flags** | `0x14` on this unit = `SWING (0x10) \| reserved (0x04)`. HomeOps: `EXTERNAL_TEMP=0x80`, `SWING=0x10`. **Not** an AC address as we initially mislabeled |
 | 8 | mode | bit 7 = power; lower bits: `0x00` AUTO / `0x08` COOL / `0x04` HEAT / `0x02` DRY / `0x01` FAN_ONLY. Full byte `0x00` = OFF |
 | 9 | fan | bit 7 = AUTO overlay; lower bits: `0x01` HIGH / `0x02` MED / `0x04` LOW. e.g. `0x84` = AUTO currently running LOW |
-| 10 | setpoint | °C mode: `raw - 0x40 = °C`. °F mode: high bit set, `raw & 0x7F = °F` |
-| 11 | T1 — indoor return air | `(raw - 40) / 2 °C` |
-| 12 | T2 — indoor coil | `(raw - 40) / 2 °C` |
-| 14 | T3 — outdoor coil | `(raw - 40) / 2 °C` |
-| 19 | flag bits | bit 4 (`0x10`) seen during normal op (meaning TBD — *not* turbo as initially assumed); bits 0/1 toggle when compressor cycles |
+| 10 | setpoint | **display-mode-dependent**. °C mode: raw decimal °C, possibly with bit 6 set as a status flag (mask `& 0x3F`). °F mode: raw decimal °F. (Master TX historically also used `\| 0x80` as a "this is °F" flag, but AC responses don't set bit 7.) See Session 9 |
+| 11 | T1 — indoor return air | `(raw - 0x28) / 2 °C` (always °C-encoded regardless of display mode) |
+| 12 | T2A — indoor coil inlet | `(raw - 0x28) / 2 °C` |
+| 13 | T2B — indoor coil outlet | `(raw - 0x28) / 2 °C` — `0xFF` (not exposed) on this unit |
+| 14 | T3 — outdoor coil | `(raw - 0x28) / 2 °C` |
+| 15 | current draw | typically `0xFF` (not measured) |
+| 17 | timer_start | bitmask combinable (TIMER_15MIN=0x01 … TIMER_16HOUR=0x40, 0x80=invalid) |
+| 18 | timer_stop | same encoding |
+| 19 | **opaque flags** | `0x18` on this unit during idle. HomeOps documents 0x00/0x01 compressor flag, but that doesn't match this unit — treat as opaque |
+| 20 | mode flags | per HomeOps: NORMAL=0x00, ECO=0x01, AUX_HEAT/turbo=0x02, SWING=0x04, VENTILATION=0x88 |
+| 21 | operation flags | water_pump=0x04, water_lock=0x80 |
+| 22-23 | error flags low/high | E1/E2 fault codes (16-bit) |
+| 24-25 | protect flags low/high | bit `0x0002` = defrost active (16-bit) |
+| 26 | CCM comm error | 0=ok, 1=timeout, 2=CRC err, 4=protocol err |
+| 27 | hardware-class id | `0x14` on this unit (matches HomeOps's C&H CH-36AHU class) |
+| 28-29 | unknown5/6 | drift over time; this unit holds `0xFF 0xFF` during idle |
 | 30 | checksum | per outer-frame rule |
 
 ### 32-byte C4 set (master TX)
@@ -172,8 +183,9 @@ Logic capture #15. Heated wall controller with a hair dryer; display went from
 Findings:
 - **Zero on-wire changes that match the wall display.** The wall controller's
   local sensor is not transmitted to the AC.
-- `byte[7]` of C0 was `0x14` constantly — confirmed this is an address/unit-id,
-  not a temperature.
+- `byte[7]` of C0 was `0x14` constantly — initially thought address/unit-id,
+  but Session 9 / HomeOps reference shows it's actually a **capabilities
+  bitmask** (SWING=0x10, EXTERNAL_TEMP=0x80). `0x14` = SWING + a reserved bit.
 
 ### Session 5 — hair-dryer on AC intake (T1)
 
@@ -253,18 +265,73 @@ Critical findings from this capture:
    earlier capture had the controller in °F mode, sending `0xC5` (= 0x80 | 69)
    for "69 °F". Our parser now handles both.
 
+### Session 9 — minimal-poll discovery; Phase 3 RX done (2026-05-19)
+
+Triggered by reviewing `HomeOps/ESPHome-Midea-XYE` — a working ESPHome XYE
+master implementation. Their entire TX surface is one struct, `TX_MESSAGE_LENGTH = 16`.
+They never send 32-byte master frames. Their cycle is just QUERY → QUERY_EXTENDED
+→ QUERY → … every 1 s, with SET/FOLLOWME on user changes. No bus break, no
+8-phase handshake, no C3-long mirror.
+
+We added an "XYE Minimal C0 Poll" diagnostic button that:
+- Disables the boot handshake entirely.
+- Sends only `AA C0 00*11 3F 01 55` every 1 s.
+- No 0x00 break byte. No C4-set, no C3, no C6.
+
+**Result:** AC engages immediately. Every TX C0-poll gets a 32-byte response
+within ~120-200 ms. Sample (idle, COOL mode, °F display):
+
+```
+AA C0 00 00 00 00 30 14 88 04 45 45 47 FF 5A FF 00 00 00 18 00 00 00 00 00 00 00 14 FF FF 1D 55
+```
+
+CRC verifies (`0xFF - (sum & 0xFF) = 0x1D`). T1=14.5 °C, T2A=15.5 °C, T3=25.0 °C
+all match plausible values. Setpoint byte `0x45` = decimal 69 = 69 °F = 20.6 °C,
+confirmed via user inspection of the wall display.
+
+**Implications:**
+1. **Phase 3 RX is done.** The wired controller's elaborate boot dance was
+   theater; the AC accepts a master that does none of it.
+2. **The 32-byte master frames in earlier captures (C4-set, C3-long, C6-long)
+   were almost certainly AC responses we mis-attributed.** Specifically:
+   - 32-byte `AA C4 …` after a 16-byte `AA C4 …` is the AC's `QUERY_EXTENDED`
+     response (per HomeOps it carries outdoor temp, static pressure,
+     compressor flags, fan PWM, etc.). What we labeled as "C4-set byte[16]
+     mode" is likely the AC's `system_status_flags` field, etc.
+   - This would also explain why `byte[19] 0xBE 0xD6` at our previously labeled
+     positions doesn't match any documented field — it's the AC's 16-bit
+     compressor frequency / outdoor fan RPM (big-endian).
+   - Not 100% confirmed (a logic-capture sanity check is still warranted), but
+     the pattern fits.
+3. **Setpoint encoding** is display-mode-dependent. AC in °F mode sends raw
+   decimal °F (e.g. `0x45 = 69 °F`) with bit 7 *not* set. Earlier `decode_setpoint_c_`
+   only handled `bit 7 set → °F` (master TX form) and missed the AC's RX form.
+   Added `use_fahrenheit: bool` YAML option; decoder/encoder switch on it.
+
+**Code changes shipped this session:**
+- `start_minimal_poll()` button (handler `MideaXYE::start_minimal_poll`).
+- `use_fahrenheit` YAML option propagates to setpoint decoder & encoder.
+- `decode_setpoint_c_` now returns `float` and honors the flag.
+- `MideaXYEClimate::on_status_frame` masks `& 0x3F` for °C decode (handles
+  the bit-6 status flag HomeOps documents).
+
 ## Open questions
 
-- **Why the AC isn't engaging as slave when we're the master.** Even after
-  matching the captured controller's byte content and timing very closely, the
-  AC's C0 status responses haven't appeared in Phase 3 tests. The C0-poll
-  addition (Session 8 finding) is the most recent change; needs flash + retest.
-- **What `byte[19]` flags actually mean.** Bit 4 was set during idle in
-  Session 8, contradicting the earlier "bit 4 = turbo" reading from Session 7.
-  Bits 0/1 transitioning when compressor cycles is the only solid observation.
-- **`byte[21]` of C4-set drift** (`0x5F`..`0x65`). Possibly a sequence counter,
-  activity beat, or some opaque per-cycle value. The AC sees our hardcoded
-  `0x61` and doesn't object, but worth understanding.
+- **The full SET commit handshake.** Phase 4: does the AC reflect state when
+  sent a single 16-byte C3 (HomeOps `SET` layout: bytes 6/7/8 = mode/fan/temp),
+  or does it need the wired controller's full `C3-short → C3-long → C6-short →
+  C6-long` sub-sequence? HomeOps says single 16-byte C3 is sufficient; needs
+  empirical confirmation on this unit.
+- **What `byte[19]` flags actually mean on this unit.** HomeOps documents
+  byte 19 as a compressor running flag (0x00 idle / 0x01 active), but ours
+  reads `0x18` while idle — those bits don't fit either value. Could be
+  hardware-class-specific. The unit's `byte 27 = 0x14` matches HomeOps's
+  C&H CH-36AHU class fingerprint, so worth checking what they observe on
+  that hardware.
+- **The 32-byte C4 / C6 frames in earlier captures.** Strongly suspected to
+  be AC responses, not master TX. A logic-capture probing the controller's
+  TX line directly (rather than the shared bus) would confirm directional
+  attribution. Until then, treat as provisional.
 - **T4 source.** Service-menu shows it; bus doesn't carry it (in any frame
   we've captured). Possibly retrievable via a different request type, or
   computed locally by the controller.
@@ -276,6 +343,12 @@ Critical findings from this capture:
 
 Recorded so future sessions don't retry the same dead ends.
 
+- **The entire 8-phase boot handshake** (bus break → C4-poll → C4-set →
+  C0-poll → C3-short → C3-long → C6-short → C6-long → cycle). Disproved by
+  Session 9: a plain 16-byte C0-poll with no preamble gets a 32-byte AC
+  response in ~150 ms. The wired controller does the elaborate dance but the
+  AC doesn't require it. We over-engineered v4 trying to mimic the controller
+  byte-for-byte.
 - **Hardcoded `mode=0x88` (COOL ON) in boot frames as a "wake-up" signal.**
   Hypothesis was that the AC wouldn't engage as slave unless commanded ON.
   Disproved by Session 8: the wired controller booted with `mode=0x08` (off)

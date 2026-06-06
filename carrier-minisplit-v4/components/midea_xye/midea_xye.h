@@ -70,12 +70,24 @@ class MideaXYE : public Component, public uart::UARTDevice {
   void set_tx_enabled(bool en) { tx_enabled_ = en; }
   bool is_tx_enabled() const { return tx_enabled_; }
 
+  // Tracks the AC's display-mode preference (°C vs °F). Only the setpoint byte
+  // changes encoding based on this; T1/T2/T3 are always °C-encoded.
+  void set_use_fahrenheit(bool b) { use_fahrenheit_ = b; }
+  bool is_fahrenheit() const { return use_fahrenheit_; }
+
   // Runtime trigger: kick off the boot handshake (C3 + C6) and start the
   // periodic C4 poll/set cycle. Safe to call multiple times — resets the state
   // machine each time. Exposed as a template button in the YAML so the user can
   // start TX precisely when an API client is attached and watching logs.
   void start_handshake_and_poll();
   void stop_tx();
+
+  // Phase-3 hypothesis test: send ONLY a 16-byte C0-poll every TX_CYCLE_MS, with
+  // no bus break and none of the boot dance (no C4-set, no C3-long, no C6).
+  // Mirrors the HomeOps/ESPHome-Midea-XYE working implementation's TX surface.
+  // If the AC responds with a 32-byte C0-status to this stripped-down poll,
+  // our elaborate boot sequence was the blocker, not a missing handshake.
+  void start_minimal_poll();
 
   // Called by MideaXYEClimate::control() to update the desired state that the
   // next periodic TX tick will encode into a C4 set frame. mode_byte is the
@@ -96,6 +108,14 @@ class MideaXYE : public Component, public uart::UARTDevice {
   // continuous polling.
   void send_one_shot_set(uint8_t mode_byte, uint8_t fan_byte,
                          uint8_t setpoint_byte, bool turbo);
+
+  // Phase-4 test: fires a single 16-byte C3 SET frame per HomeOps's layout
+  // (bytes 6/7/8 = mode/fan/setpoint, byte 13 = 0x3C complement). Intended
+  // for use while minimal_poll is running — we send one C3, then watch
+  // subsequent C0 status responses to see whether the AC commits to the new
+  // state. Bypasses the desired_state machinery entirely.
+  void send_one_shot_c3_set(uint8_t mode_byte, uint8_t fan_byte,
+                            uint8_t setpoint_byte);
 
  protected:
   static constexpr uint8_t START_BYTE = 0xAA;
@@ -128,7 +148,11 @@ class MideaXYE : public Component, public uart::UARTDevice {
   static uint8_t calc_checksum_(const uint8_t *data, size_t len);
   static const char *mode_name_(uint8_t b);
   static const char *fan_name_(uint8_t b);
-  static int decode_setpoint_c_(uint8_t raw);
+  // Returns the setpoint in °C. When use_fahrenheit is true, raw is interpreted
+  // as a decimal Fahrenheit value (the encoding the AC uses when its display
+  // is in °F mode). When false, raw is interpreted as decimal °C with bit 6
+  // optionally set as a status flag — masked before use.
+  static float decode_setpoint_c_(uint8_t raw, bool use_fahrenheit);
   // Temperature encoding for T1/T2/T4 (and presumed T3): (raw - 40) / 2 °C.
   // Verified against hair-dryer T1 test: raw 75→17.5 °C, raw 118→39 °C.
   static float decode_temp_c_(uint8_t raw);
@@ -149,6 +173,7 @@ class MideaXYE : public Component, public uart::UARTDevice {
   static constexpr uint32_t TX_LINE_QUIET_MS = 60;
 
   bool tx_enabled_{false};
+  bool use_fahrenheit_{false};
   // Runtime gate (set true either by tx_enabled_ at setup time or by the
   // start_handshake_and_poll() button at runtime). loop() checks THIS instead
   // of tx_enabled_ so a button press takes effect even if the YAML disabled TX.
@@ -178,6 +203,11 @@ class MideaXYE : public Component, public uart::UARTDevice {
 
   uint32_t last_cycle_ms_{0};
   uint8_t tx_phase_{0};  // 0 = idle (waiting for cycle), 1 = poll sent, 2 = set sent
+
+  // When true, tx_pump_() short-circuits and sends only 16-byte C0 polls.
+  // Set via start_minimal_poll(); cleared by stop_tx() and start_handshake_and_poll().
+  bool minimal_mode_{false};
+  uint32_t last_minimal_poll_ms_{0};
 
   // Boot handshake: replicates the full sequence the wired controller sends
   // at power-on, observed in raw captures:

@@ -77,7 +77,16 @@ void MideaXYEClimate::on_status_frame(const uint8_t *data) {
     }
   }
 
-  this->target_temperature  = static_cast<float>(set_b - 0x40);
+  // Setpoint byte encoding depends on the AC's display-mode setting.
+  // °F mode: raw decimal °F. °C mode: raw decimal °C with bit 6 optionally
+  // set as a status flag. Mask both bits 6+7 for °C, mask only bit 7 (legacy
+  // °F-mode flag) for °F.
+  if (this->parent_ != nullptr && this->parent_->is_fahrenheit()) {
+    const int f = static_cast<int>(set_b & 0x7F);
+    this->target_temperature = (static_cast<float>(f) - 32.0f) * 5.0f / 9.0f;
+  } else {
+    this->target_temperature = static_cast<float>(set_b & 0x3F);
+  }
   this->current_temperature = (static_cast<int>(t1_b) - 40) * 0.5f;
 
   // Turbo / BOOST preset reflected from byte[19] bit 4.
@@ -125,11 +134,19 @@ void MideaXYEClimate::push_desired_state_() {
     }
   }
 
-  // Setpoint: clamp to the encoded range (16..30 °C) and offset by 0x40.
-  int sp = static_cast<int>(this->target_temperature);
-  if (sp < 16) sp = 16;
-  if (sp > 30) sp = 30;
-  uint8_t setpoint_b = static_cast<uint8_t>(0x40 + sp);
+  // Setpoint TX encoding mirrors the AC's display-mode setting. °C mode:
+  // raw byte = °C + 0x40. °F mode: based on captured °F-mode controller TX,
+  // raw byte = °F | 0x80. Clamp to a sensible HVAC range first.
+  float sp_c = this->target_temperature;
+  if (sp_c < 16.0f) sp_c = 16.0f;
+  if (sp_c > 30.0f) sp_c = 30.0f;
+  uint8_t setpoint_b;
+  if (this->parent_ != nullptr && this->parent_->is_fahrenheit()) {
+    const int sp_f = static_cast<int>(sp_c * 9.0f / 5.0f + 32.0f + 0.5f);  // round
+    setpoint_b = static_cast<uint8_t>(0x80 | (sp_f & 0x7F));
+  } else {
+    setpoint_b = static_cast<uint8_t>(0x40 + static_cast<int>(sp_c));
+  }
 
   const bool turbo = this->preset.has_value() && *this->preset == climate::CLIMATE_PRESET_BOOST;
 

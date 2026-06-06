@@ -1,97 +1,76 @@
-# Phase 3 — current blocker & next experiment
+# Status (2026-05-19)
 
-## Where we left off
+**Phase 3 (RX side / AC engagement) is DONE.** Session 9 in `CAPTURES.md` has
+the full discovery. TL;DR: a 16-byte `AA C0 00*11 3F 01 55` poll every 1 s is
+sufficient to elicit a 32-byte C0 status from the AC within ~150 ms. The
+elaborate boot handshake replicated from the wired controller is not needed.
 
-Last commit (`133a988`) added the missing **C0-poll** frame to both the boot
-sequence and the regular cycle. Previously we were sending C4-poll + C4-set
-and waiting for the AC to respond — but the AC doesn't respond to those. It
-responds to a **C0-poll** (16 bytes, `AA C0 00 00 00 00 00 00 00 00 00 00 00 3F 01 55`)
-with a `0xC0` 32-byte status frame.
+`use_fahrenheit: true` YAML option also added — necessary because this AC's
+display is set to °F, which changes how byte 10 (setpoint) is encoded on the
+wire.
 
-Without C0-poll in our cycle, we never gave the AC the chance to send its
-status. That's why no `AA C0 …` 32-byte frames ever arrived in earlier Phase 3
-tests.
+# Phase 4 — state commit (current WIP)
+
+Goal: send mode/fan/setpoint commands from HA → AC and have the AC reflect
+the new state in its subsequent C0 status responses.
 
 ## Next experiment (flash + observe)
 
-1. User flashes the current build to `master-minisplit.local`.
-2. User attaches to logs (`esphome logs carrier-minisplit-v4/carrier-minisplit.yaml`).
-3. User presses the **`XYE Start TX`** button in HA.
-4. Watch the log for the next 5-10 seconds.
+The plan, in the spirit of "smallest possible test":
+
+1. User has `XYE Minimal C0 Poll` running (steady 1 s C0 cycle, AC responding).
+2. User presses a new `XYE Minimal C3 Set` button that fires ONE 16-byte C3
+   frame with: `mode=COOL+power (0x88)`, `fan=AUTO (0x80)`, `setpoint=72 °F
+   (0xC8)` — picks values different from the current AC state so a change is
+   unambiguous.
+3. Watch the next ~3 C0 status frames in the log.
 
 ### Success criteria
 
-A `[RX C0-status (AC) len=32]` line should appear within ~150 ms of every
-`TX C0-poll`. The status frame should decode into real temperatures (T1, T2,
-T3 in plausible ranges around room/coil/outdoor temps).
-
-Expected steady-state cycle in the log:
-
-```
-[I] TX C4-poll
-[I] TX C4-set mode=0x08 fan=0x80 set=0x56(22C)
-[I] TX C0-poll (request status)
-[I] [RX C0-status (AC) len=32] AA C0 00 00 00 00 30 14 …  ← THIS is the win
-[I]   status: power=… mode=… fan=… set=… T1=… T2=… T3=…
-```
+The C0 status frame following the C3 set should show byte 10 transition from
+the prior setpoint to `0xC8` (or `0x48`, see "Setpoint TX encoding" below).
+Mode byte 8 should reflect `0x88` (if it wasn't already). Fan byte 9 may
+transition through `0x80` (AUTO requested, fan still idle) then show speed
+when fan engages.
 
 ### Failure modes & what they mean
 
-- **No `RX C0-status (AC)` after `TX C0-poll`.** Our C0-poll bytes might
-  differ from the captured controller's. Do a logic capture during a TX
-  cycle, compare our C0-poll byte-for-byte against the captured one in
-  `CAPTURES.md` Session 8 (`AA C0 00 00 00 00 00 00 00 00 00 00 00 3F 01 55`).
-- **`RX C0-status (AC)` appears but content is mostly zeros / `0xFF` sentinel
-  values.** The AC is replying but considers us not-fully-registered. Compare
-  against captured C0-status content — there may be a master-side byte
-  signature the AC checks before populating real data.
-- **Bus collision (frames overlap, validation fails).** Our line-quiet gate is
-  60 ms — possibly too short for this AC's response latency. Bump
-  `TX_LINE_QUIET_MS` higher or add a longer post-C4-set gap.
+- **No state change in C0 status, AC keeps reporting old values.** Either:
+  - Our single 16-byte C3 isn't enough — the AC needs the full `C3-short →
+    C3-long → C6-short → C6-long` choreography. Next step: replicate that
+    sub-sequence but still as 16-byte frames (no 32-byte master TX).
+  - Or our C3 frame bytes are subtly malformed. Diff against a logic capture
+    of the wired controller's C3 (`CAPTURES.md` Session 8 has a known-good
+    frame at t=+2027 ms).
+- **Bus collision (frames overlap, validation fails).** Bump `TX_LINE_QUIET_MS`
+  or add an explicit "wait for line quiet" before the one-shot TX.
+- **AC responds with an `AA C0` short frame complaining (e.g. CCM error
+  flag byte 26 != 0).** Inspect that flag — 0x02 = CRC error, 0x04 = protocol
+  error. Tells us if we're getting noticed but rejected.
 
-## If C0-status comes through cleanly
+### Setpoint TX encoding — the unsettled bit
 
-Then Phase 3 RX side is done. Next sub-task: confirm the **state-change
-commit** flow works.
+Two reasonable forms for 72 °F in TX:
+- `0xC8` = bit 7 set + 72 (matches the captured wired controller's °F TX)
+- `0x48` = plain decimal 72 (mirrors the AC's RX-side encoding)
 
-1. With AC engaged (steady C0-status incoming), change the HA climate's mode
-   from OFF to COOL.
-2. Logs should show:
-   - `[I] desired state: power=ON mode_bits=0x08 (wire=0x88) … [will commit via C3-short next cycle]`
-   - `[I] TX C3-short (cmd: mode=0x88 …)`
-   - `[I] [RX C0-status (AC) …]` with `mode=0x81` (FAN_ONLY, transitional)
-   - A second later: `[I] [RX C0-status (AC) …]` with `mode=0x88` (COOL, fully on)
-3. AC fan should physically turn on. Compressor engages a few seconds later.
+The button starts with `0xC8` since that matches a confirmed-good capture.
+If the AC doesn't respond, try `0x48` next.
 
-If only the C3-short fires but the AC doesn't transition, we likely need the
-**full C3-short → C3-long → C6-short → C6-long sub-sequence** on every state
-change, not just C3-short. The captured controller does the full sequence
-when the user presses power-on (`CAPTURES.md` Session 8, t=+7155 ms onward).
+## After SET works
 
-Implementation hook: extend the `state_dirty_` handler in `tx_pump_()` to walk
-through 4 commit phases instead of just sending one C3-short. There's already
-a working pattern (the boot phase state machine) to copy from.
+If C3 SET commits state cleanly:
+- Plumb the climate `control()` call into a real SET path (replace the
+  current 32-byte C4-set + boot handshake plumbing entirely).
+- Adopt HomeOps's full cycle: QUERY (C0) → QUERY_EXTENDED (C4) → QUERY → …,
+  with SET (C3) and FOLLOW_ME (C6) interleaved on user changes.
+- Decode the 32-byte C4 response (now strongly suspected to carry outdoor
+  temp + static pressure + compressor flags etc., per HomeOps).
+- Rip out the 8-phase boot machinery — it's confirmed unnecessary.
 
-## If C0-status still doesn't come through
-
-Most likely culprits, ranked:
-
-1. **Our C0-poll bytes are subtly wrong.** Capture our actual TX with the
-   logic analyzer during a cycle, diff against captured controller bytes.
-2. **Line-quiet timing too aggressive.** Try `TX_LINE_QUIET_MS = 100` or
-   higher. The AC might not get a clean window to start its response if we
-   re-TX too quickly.
-3. **`byte[7]` in our master TX is wrong.** We send `0x00`; the controller
-   also sends `0x00`. But maybe in some frames the AC expects its address
-   (`0x14`) echoed? Worth checking each frame's byte[7] in the captured
-   reference.
-4. **TX/RX transceiver auto-direction switching.** If the transceiver doesn't
-   release the bus fast enough after our TX, the AC's response window may be
-   stomped on. Hardware-side, harder to fix.
-
-## Diagnostic shortcut
-
-The `XYE One-Shot Set 28C` button fires a single C4-set frame with setpoint
-28 °C. Useful for "send one frame, see what comes back over the next 500 ms"
-testing without the periodic cycle adding noise. Pair with `XYE Stop TX` to
-get a quiet bus for diagnostic frames.
+If C3 SET does *not* commit state on its own:
+- Add a "XYE Full C3+C6 Set" button that fires C3-short → C3-long → C6-short
+  → C6-long as 16-byte frames in sequence (no 32-byte master TX).
+- If that works, the choreography matters but the byte count doesn't.
+- If that still doesn't work, we need to compare logic captures of our TX
+  against the wired controller's TX during a known-good user state change.
