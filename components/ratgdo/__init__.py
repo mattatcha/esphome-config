@@ -4,6 +4,7 @@ from esphome import automation, pins
 import esphome.codegen as cg
 from esphome.components import binary_sensor
 import esphome.config_validation as cv
+import esphome.final_validate as fv
 from esphome.const import CONF_ID, CONF_TRIGGER_ID
 from esphome.core import CORE
 from esphome.coroutine import CoroPriority, coroutine_with_priority
@@ -193,6 +194,32 @@ RATGDO_CLIENT_SCHMEA = cv.Schema(
         cv.GenerateID(CONF_RATGDO_ID): cv.use_id(RATGDO),
     }
 )
+
+
+def _final_validate_single_protocol(config):
+    """All ratgdo instances must share one protocol.
+
+    The protocol is selected at compile time via a global -DPROTOCOL_* build
+    flag and a non-exclusive #ifdef chain in init_protocol(), so two doors with
+    different protocols would both end up speaking whichever protocol wins the
+    #ifdef order. Reject that at config time instead of building wrong firmware.
+    """
+    full_config = fv.full_config.get()
+    instances = full_config.get(DOMAIN, [])
+    if not isinstance(instances, list):
+        instances = [instances]
+    protocols = {inst.get(CONF_PROTOCOL, PROTOCOL_SECPLUSV2) for inst in instances}
+    if len(protocols) > 1:
+        raise cv.Invalid(
+            "All ratgdo doors must use the same protocol; it is selected at "
+            "compile time for the whole firmware, so mixing "
+            f"{sorted(protocols)} would force every door onto one of them. "
+            "Set the same protocol on every ratgdo instance."
+        )
+    return config
+
+
+FINAL_VALIDATE_SCHEMA = _final_validate_single_protocol
 
 
 async def register_ratgdo_child(var, config):

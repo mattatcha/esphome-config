@@ -15,6 +15,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <soc/gpio_sig_map.h>
+#include <soc/soc_caps.h> // SOC_UART_HP_NUM (number of hardware UARTs)
 
 namespace esphome::ratgdo {
 
@@ -34,17 +35,19 @@ static constexpr size_t RMT_TRANS_QUEUE_DEPTH = 4;
 
 // Each RatgdoUART instance claims its own hardware UART so multiple doors can
 // run on a single ESP32. UART0 is reserved for the logger, leaving UART1 and
-// UART2 (classic ESP32) -> two doors max. The UART port and its TX matrix
+// UART2 (classic ESP32/S3) -> two doors max. The UART port and its TX matrix
 // signal index must stay in sync, so they are assigned together as a slot.
-// NOTE: this assumes a classic ESP32 with UART2 available; chips without UART2
-// (e.g. ESP32-C3) would need this table trimmed.
+// The UART2 slot is compiled out on chips that only have UART0+UART1
+// (e.g. ESP32-C3/C2/H2, SOC_UART_HP_NUM == 2), which then support one door.
 struct RatgdoUartSlot {
     uart_port_t port;
     int tx_signal_idx;
 };
 static constexpr RatgdoUartSlot UART_SLOTS[] = {
     { UART_NUM_1, U1TXD_OUT_IDX },
+#if !defined(SOC_UART_HP_NUM) || SOC_UART_HP_NUM > 2
     { UART_NUM_2, U2TXD_OUT_IDX },
+#endif
 };
 static constexpr size_t UART_SLOT_COUNT = sizeof(UART_SLOTS) / sizeof(UART_SLOTS[0]);
 // Incremented once per begin(); each door grabs the next free UART slot.
