@@ -41,6 +41,10 @@ midea_xye:
   # While debugging we keep this false and use the "XYE Start TX" button below
   # so we can watch the handshake fire in real time with an API client attached.
   tx_enabled: false
+  # This AC's display is set to °F, so it reports the setpoint byte as raw
+  # decimal Fahrenheit (e.g. 0x45 = 69 °F = 20.5 °C). Flip to false if you
+  # switch the display to °C.
+  use_fahrenheit: true
 
 climate:
   - platform: midea_xye
@@ -81,6 +85,25 @@ button:
       - lambda: |-
           // mode=COOL(0x88), fan=AUTO(0x80), setpoint=28°C (0x40 + 28 = 0x5C), turbo=off
           id(xye).send_one_shot_set(0x88, 0x80, 0x5C, false);
+  # Phase-3 hypothesis test (per HomeOps/ESPHome-Midea-XYE working impl):
+  # send ONLY 16-byte C0 polls every 1 s — no bus break, no C4-set, no C3, no C6.
+  # If the AC replies with a 32-byte C0-status frame, our boot dance was the
+  # blocker. Watch logs for "[RX C0-status (AC) len=32]" within ~150 ms of each
+  # "TX C0-poll".
+  - platform: template
+    name: "XYE Minimal C0 Poll"
+    on_press:
+      - lambda: id(xye).start_minimal_poll();
+  # Phase-4 hypothesis test: while minimal-poll is running, fire ONE 16-byte
+  # C3 SET frame and watch the next C0 status frames for the new state.
+  # mode=COOL+power(0x88), fan=AUTO(0x80), setpoint=72°F = 0x80|72 = 0xC8
+  # (matches the captured wired-controller °F-mode TX form from Session 8).
+  # If the AC doesn't reflect the new state in a few cycles, try 0x48 (plain
+  # decimal 72 °F, mirroring the AC's RX form).
+  - platform: template
+    name: "XYE Minimal C3 Set"
+    on_press:
+      - lambda: id(xye).send_one_shot_c3_set(0x88, 0x80, 0xC8);
 
 wifi:
   power_save_mode: none

@@ -64,9 +64,21 @@ over RS-485. Custom external component at `components/midea_xye/`.
 
 ## Useful runtime buttons (in HA after flash)
 
+Current preferred path (Phase 3+):
+- **`XYE Minimal C0 Poll`** — sends only `AA C0 00*11 3F 01 55` every 1 s, no
+  boot handshake, no other frames. The AC engages on this alone (Session 9
+  in CAPTURES.md). Default `tx_enabled: false`, so this button is the
+  intended way to start TX.
+- **`XYE Minimal C3 Set`** — Phase-4 one-shot SET test (mode=COOL ON, fan=AUTO,
+  setpoint=72 °F). Fires while minimal-poll is running.
+- **`XYE Stop TX`** — halts both minimal-poll and any boot-handshake TX
+  (RX parser keeps running).
+
+Legacy (kept for reference / comparison):
 - **`XYE Start TX`** — kick off the 8-phase boot handshake and start the
-  periodic C4 cycle. Default `tx_enabled: false` means this is the *only* way
-  to start TX unless YAML is changed.
-- **`XYE Stop TX`** — halt periodic TX (RX parser keeps running).
-- **`XYE One-Shot Set 28C`** — fires a single C4-set frame with setpoint 28 °C.
-  Diagnostic — for testing whether the AC responds to an isolated frame.
+  periodic C4 cycle. Confirmed unnecessary by Session 9 but useful for
+  comparing wired-controller-style chatter against the minimal path.
+- **`XYE One-Shot Set 28C`** — fires a single 32-byte C4-set frame with
+  setpoint 28 °C (°C-mode encoding). Diagnostic only — the AC doesn't
+  necessarily react to this; the new C3-set button is the right tool for
+  Phase-4 testing.

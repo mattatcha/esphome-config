@@ -19,6 +19,7 @@ void MideaXYE::setup() {
 
 void MideaXYE::start_handshake_and_poll() {
   ESP_LOGW(TAG, "start_handshake_and_poll: resetting state and scheduling boot");
+  this->minimal_mode_ = false;
   this->boot_done_ = false;
   this->boot_phase_ = 0;
   this->boot_start_ms_ = millis() + BOOT_DELAY_MS;
@@ -28,9 +29,21 @@ void MideaXYE::start_handshake_and_poll() {
   this->tx_running_ = true;
 }
 
+void MideaXYE::start_minimal_poll() {
+  ESP_LOGW(TAG, "start_minimal_poll: 16-byte C0 polls every %ums, no boot, no other frames",
+           (unsigned) TX_CYCLE_MS);
+  this->minimal_mode_ = true;
+  // Skip boot entirely; mark done so tx_pump_ goes straight to the minimal branch.
+  this->boot_done_ = true;
+  this->tx_phase_ = 0;
+  this->last_minimal_poll_ms_ = 0;  // fire immediately on the next tx_pump tick
+  this->tx_running_ = true;
+}
+
 void MideaXYE::stop_tx() {
   ESP_LOGW(TAG, "stop_tx: halting periodic TX");
   this->tx_running_ = false;
+  this->minimal_mode_ = false;
 }
 
 void MideaXYE::dump_config() {
@@ -181,11 +194,11 @@ void MideaXYE::on_frame_(const uint8_t *data, size_t len) {
 
     ESP_LOGI(TAG,
              "  status: power=%s mode=%s(0x%02X) fan=%s(0x%02X) "
-             "set=%dC(0x%02X) T1=%.1fC T2=%.1fC T3=%.1fC flags=0x%02X",
+             "set=%.1fC(0x%02X) T1=%.1fC T2=%.1fC T3=%.1fC flags=0x%02X",
              (mode_b & 0x80) ? "ON" : "off",
              mode_name_(mode_b), mode_b,
              fan_name_(fan_b), fan_b,
-             decode_setpoint_c_(set_b), set_b,
+             decode_setpoint_c_(set_b, this->use_fahrenheit_), set_b,
              decode_temp_c_(t1_b),
              decode_temp_c_(t2_b),
              decode_temp_c_(t3_b),
@@ -200,21 +213,21 @@ void MideaXYE::on_frame_(const uint8_t *data, size_t len) {
     const uint8_t mode_b = data[16];
     const uint8_t fan_b  = data[17];
     const uint8_t set_b  = data[18];
-    ESP_LOGI(TAG, "  ctrl-tx: power=%s mode=%s(0x%02X) fan=%s(0x%02X) set=%dC(0x%02X)",
+    ESP_LOGI(TAG, "  ctrl-tx: power=%s mode=%s(0x%02X) fan=%s(0x%02X) set=%.1fC(0x%02X)",
              (mode_b & 0x80) ? "ON" : "off",
              mode_name_(mode_b), mode_b,
              fan_name_(fan_b), fan_b,
-             decode_setpoint_c_(set_b), set_b);
+             decode_setpoint_c_(set_b, this->use_fahrenheit_), set_b);
   } else if (len == SHORT_LEN && type == 0xC3) {
     // Controller short wakeup carries mode/fan/setpoint at bytes 6/7/8.
     const uint8_t mode_b = data[6];
     const uint8_t fan_b  = data[7];
     const uint8_t set_b  = data[8];
-    ESP_LOGI(TAG, "  c3-wake: power=%s mode=%s(0x%02X) fan=%s(0x%02X) set=%dC(0x%02X)",
+    ESP_LOGI(TAG, "  c3-wake: power=%s mode=%s(0x%02X) fan=%s(0x%02X) set=%.1fC(0x%02X)",
              (mode_b & 0x80) ? "ON" : "off",
              mode_name_(mode_b), mode_b,
              fan_name_(fan_b), fan_b,
-             decode_setpoint_c_(set_b), set_b);
+             decode_setpoint_c_(set_b, this->use_fahrenheit_), set_b);
   }
 }
 
@@ -247,15 +260,20 @@ const char *MideaXYE::fan_name_(uint8_t b) {
   }
 }
 
-int MideaXYE::decode_setpoint_c_(uint8_t raw) {
-  // The controller switches encoding based on its display unit:
-  //   °C mode (high bit clear): raw - 0x40 = °C       (e.g. 17 °C → 0x51, 30 °C → 0x5E)
-  //   °F mode (high bit set):   (raw & 0x7F) °F → °C  (e.g. 69 °F → 0xC5, 86 °F → 0xD6)
-  if (raw & 0x80) {
+float MideaXYE::decode_setpoint_c_(uint8_t raw, bool use_fahrenheit) {
+  if (use_fahrenheit) {
+    // °F-mode units (e.g. our test AC): byte is raw decimal °F. Verified by
+    // observing C0[10]=0x45 (=69) while the wall display showed 69 °F.
+    // Some master-TX captures showed bit 7 set as a "this is °F" flag; mask
+    // it for safety even though AC responses don't appear to set it.
     const int f = static_cast<int>(raw & 0x7F);
-    return (f - 32) * 5 / 9;
+    return (static_cast<float>(f) - 32.0f) * 5.0f / 9.0f;
   }
-  return static_cast<int>(raw) - 0x40;
+  // °C-mode encoding. The wired controller's TX encodes °C as raw + 0x40
+  // (17 °C → 0x51, 30 °C → 0x5E). The AC's RX may also set bit 6 as a status
+  // flag unrelated to the value (per HomeOps's docs). Mask bits 6+7 and
+  // interpret the remaining 6 bits as decimal °C.
+  return static_cast<float>(raw & 0x3F);
 }
 
 float MideaXYE::decode_temp_c_(uint8_t raw) {
@@ -299,10 +317,11 @@ void MideaXYE::set_desired_state(uint8_t mode_byte, uint8_t fan_byte,
 
   ESP_LOGI(TAG,
            "desired state: power=%s mode_bits=0x%02X (wire=0x%02X) "
-           "fan=0x%02X set=0x%02X(%dC) turbo=%d%s",
+           "fan=0x%02X set=0x%02X(%.1fC) turbo=%d%s",
            this->desired_power_ ? "ON" : "off",
            this->desired_mode_bits_, this->wire_mode_byte_(),
-           fan_byte, setpoint_byte, setpoint_byte - 0x40, turbo,
+           fan_byte, setpoint_byte,
+           decode_setpoint_c_(setpoint_byte, this->use_fahrenheit_), turbo,
            changed ? " [will commit via C3-short next cycle]" : "");
 }
 
@@ -325,9 +344,9 @@ void MideaXYE::send_one_shot_set(uint8_t mode_byte, uint8_t fan_byte,
   this->desired_setpoint_ = setpoint_byte;
   this->desired_turbo_    = turbo;
 
-  ESP_LOGW(TAG, "one-shot C4-set: mode=0x%02X fan=0x%02X set=0x%02X(%dC) turbo=%d",
+  ESP_LOGW(TAG, "one-shot C4-set: mode=0x%02X fan=0x%02X set=0x%02X(%.1fC) turbo=%d",
            this->wire_mode_byte_(), fan_byte, setpoint_byte,
-           setpoint_byte - 0x40, turbo);
+           decode_setpoint_c_(setpoint_byte, this->use_fahrenheit_), turbo);
   this->send_c4_set_();
 
   this->desired_mode_bits_ = prev_bits;
@@ -337,6 +356,29 @@ void MideaXYE::send_one_shot_set(uint8_t mode_byte, uint8_t fan_byte,
   this->desired_turbo_     = prev_turbo;
 }
 
+void MideaXYE::send_one_shot_c3_set(uint8_t mode_byte, uint8_t fan_byte,
+                                    uint8_t setpoint_byte) {
+  // 16-byte C3 SET per HomeOps's TX layout. The complement byte (0x3C) sits
+  // at position 13, CRC at 14, prologue at 15. Bytes 2..5 are address fields
+  // (server_id, client_id1, direction, node_id) — all 0x00 by default and
+  // unchanged across HomeOps's standard cycles.
+  uint8_t f[16] = {
+    0xAA, 0xC3, 0x00, 0x00, 0x00, 0x00,
+    mode_byte,       // [6] operation_mode
+    fan_byte,        // [7] fan_mode
+    setpoint_byte,   // [8] target_temperature
+    0x00, 0x00, 0x00, 0x00,
+    0x3C,            // [13] complement of 0xC3
+    0x00,            // [14] CRC, computed below
+    0x55,            // [15] prologue
+  };
+  f[14] = calc_checksum_(f, 16);
+  this->write_array(f, 16);
+  ESP_LOGW(TAG, "one-shot C3 SET: mode=0x%02X fan=0x%02X set=0x%02X(%.1fC)",
+           mode_byte, fan_byte, setpoint_byte,
+           decode_setpoint_c_(setpoint_byte, this->use_fahrenheit_));
+}
+
 void MideaXYE::tx_pump_() {
   const uint32_t now = millis();
 
@@ -344,6 +386,16 @@ void MideaXYE::tx_pump_() {
   // may still be in the middle of responding to our previous frame.
   if (this->last_byte_ms_ != 0 &&
       (now - this->last_byte_ms_) < TX_LINE_QUIET_MS) {
+    return;
+  }
+
+  if (this->minimal_mode_) {
+    // Strict 16-byte-C0-only experiment. No boot dance, no C4/C3/C6, no break byte.
+    if (this->last_minimal_poll_ms_ == 0 ||
+        (now - this->last_minimal_poll_ms_) >= TX_CYCLE_MS) {
+      this->send_c0_poll_();
+      this->last_minimal_poll_ms_ = now;
+    }
     return;
   }
 
@@ -569,8 +621,9 @@ void MideaXYE::send_c4_set_() {
   frame[30] = calc_checksum_(frame, 32);
 
   this->write_array(frame, sizeof(frame));
-  ESP_LOGI(TAG, "TX C4-set mode=0x%02X fan=0x%02X set=0x%02X(%dC)",
-           frame[16], frame[17], frame[18], frame[18] - 0x40);
+  ESP_LOGI(TAG, "TX C4-set mode=0x%02X fan=0x%02X set=0x%02X(%.1fC)",
+           frame[16], frame[17], frame[18],
+           decode_setpoint_c_(frame[18], this->use_fahrenheit_));
 }
 
 void MideaXYE::publish_status_(const uint8_t *data) {
