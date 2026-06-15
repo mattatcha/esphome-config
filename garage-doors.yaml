@@ -1,0 +1,175 @@
+substitutions:
+  device_name: garage-doors
+  friendly_name: Garage
+
+packages:
+  common: !include .common.yaml
+
+# ratgdo needs the esp-idf framework (it uses the IDF RMT + hardware-UART
+# drivers). Board is the Wemos/MH-ET "Mini32"; change if yours differs.
+esphome:
+  min_version: 2026.4.0
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+# Vendored, locally-patched ratgdo. The patch sets MULTI_CONF=True and gives
+# each door its own hardware UART (UART1 for the first instance, UART2 for the
+# second) so two Security+ doors can run on one ESP32. See
+# components/ratgdo/ratgdo_uart_esp32.cpp.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ratgdo]
+
+# Reduce flash wear from the rolling-code-counter writes.
+preferences:
+  flash_write_interval: 1min
+
+# ---------------------------------------------------------------------------
+# Doors
+#   Left  -> input_gdo GPIO4,  output_gdo GPIO23, obst GPIO32  (hardware UART1)
+#   Right -> input_gdo GPIO22, output_gdo GPIO19, obst GPIO33  (hardware UART2)
+# Both run Security+ 2.0. For an older opener set protocol: secplusv1 on that
+# door (keep both doors on the same protocol for now — mixed protocols need
+# extra work in the component). If obstruction reads inverted, flip
+# obst_sleep_low.
+# ---------------------------------------------------------------------------
+ratgdo:
+  - id: door_left
+    protocol: secplusv2
+    input_gdo_pin: GPIO4
+    output_gdo_pin: GPIO23
+    input_obst_pin: GPIO32
+    obst_sleep_low: true
+  - id: door_right
+    protocol: secplusv2
+    input_gdo_pin: GPIO22
+    output_gdo_pin: GPIO19
+    input_obst_pin: GPIO33
+    obst_sleep_low: true
+
+cover:
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_cover
+    device_class: garage
+    name: "Left Door"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_cover
+    device_class: garage
+    name: "Right Door"
+
+light:
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_light
+    name: "Left Light"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_light
+    name: "Right Light"
+
+lock:
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_lock
+    name: "Left Lock remotes"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_lock
+    name: "Right Lock remotes"
+
+binary_sensor:
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_motion
+    type: motion
+    device_class: motion
+    name: "Left Motion"
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_obstruction
+    type: obstruction
+    device_class: problem
+    name: "Left Obstruction"
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_motor
+    type: motor
+    entity_category: diagnostic
+    name: "Left Motor"
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_button
+    type: button
+    entity_category: diagnostic
+    name: "Left Wall Button"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_motion
+    type: motion
+    device_class: motion
+    name: "Right Motion"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_obstruction
+    type: obstruction
+    device_class: problem
+    name: "Right Obstruction"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_motor
+    type: motor
+    entity_category: diagnostic
+    name: "Right Motor"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_button
+    type: button
+    entity_category: diagnostic
+    name: "Right Wall Button"
+
+sensor:
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_openings
+    type: openings
+    entity_category: diagnostic
+    name: "Left Openings"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_openings
+    type: openings
+    entity_category: diagnostic
+    name: "Right Openings"
+
+number:
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_opening_duration
+    type: opening_duration
+    entity_category: config
+    name: "Left Opening duration"
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_closing_duration
+    type: closing_duration
+    entity_category: config
+    name: "Left Closing duration"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_opening_duration
+    type: opening_duration
+    entity_category: config
+    name: "Right Opening duration"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_closing_duration
+    type: closing_duration
+    entity_category: config
+    name: "Right Closing duration"
