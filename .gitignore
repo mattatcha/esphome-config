@@ -26,3 +26,10 @@ secrets.yaml
 *.log
 
 tmp/
+
+# Superseded carrier-minisplit iterations (v3/v4 are tracked)
+/carrier-minisplit/
+/carrier-minisplit-v2/
+
+# Vendor-extracted dictionary; not redistributable
+components/navitas_tac/docs/TACDictionary.xml
