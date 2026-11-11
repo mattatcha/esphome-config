@@ -1,0 +1,321 @@
+esphome:
+  name: navitas-tac-controller
+  friendly_name: "Navitas TAC Golf Cart Controller"
+  includes:
+    - tac_controller.h
+  libraries:
+    - "ArduinoBLE"
+
+esp32:
+  board: esp32dev
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  # encryption:
+  # key: !secret api_encryption_key
+
+ota:
+  # password: !secret ota_password
+
+# wifi:
+#   ssid: !secret wifi_ssid
+#   password: !secret wifi_password
+
+# Enable fallback hotspot in case wifi connection fails
+# ap:
+#   ssid: "Navitas-TAC Fallback Hotspot"
+#   password: !secret ap_password
+
+captive_portal:
+
+# Enable Bluetooth LE tracker
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+# BLE client configuration
+ble_client:
+  - mac_address: "AA:BB:CC:DD:EE:FF" # Replace with your TAC controller MAC address
+    id: navitas_tac_ble_client
+    auto_connect: true
+    on_connect:
+      - logger.log: "Connected to Navitas TAC Controller"
+    on_disconnect:
+      - logger.log: "Disconnected from Navitas TAC Controller"
+
+# Custom component for TAC protocol communication
+custom_component:
+  - lambda: |-
+      auto tac_component = new TACControllerComponent();
+      return {tac_component};
+    components:
+      - id: tac_controller
+
+# TAC Controller Sensor definitions based on TACDictionary.js
+sensor:
+  # Core Motor Parameters (Address 0-10)
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Controller Temperature"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC" # Replace with actual service UUID
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC" # Replace with actual characteristic
+    id: controller_temp
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    device_class: "temperature"
+    # Address 0, Scale 16
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 16.0;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "DC Bus Voltage"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: dc_bus_voltage
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: "voltage"
+    # Address 1, Scale 128
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 128.0;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Battery Current"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: battery_current
+    unit_of_measurement: "A"
+    accuracy_decimals: 2
+    device_class: "current"
+    # Address 2, Scale 16
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 16.0;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Motor Current Ia"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: motor_current_ia
+    unit_of_measurement: "A"
+    accuracy_decimals: 2
+    device_class: "current"
+    # Address 3, Scale 16
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 16.0;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Motor Current Ib"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: motor_current_ib
+    unit_of_measurement: "A"
+    accuracy_decimals: 2
+    device_class: "current"
+    # Address 4, Scale 16
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 16.0;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Motor Current Ic"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: motor_current_ic
+    unit_of_measurement: "A"
+    accuracy_decimals: 2
+    device_class: "current"
+    # Address 5, Scale 16
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 16.0;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Logic Power Voltage"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: logic_power_voltage
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: "voltage"
+    # Address 8, Scale 128
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 128.0;
+
+  # Key Motor Status Parameters
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Motor RPM"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: motor_rpm
+    unit_of_measurement: "rpm"
+    accuracy_decimals: 0
+    # Address 38, Scale 1
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      if (raw > 32767) raw = raw - 65536; // Handle signed values
+      return (float)raw;
+
+  # Calculated Vehicle Speed (based on RPM, tire diameter, gear ratio)
+  - platform: template
+    name: "Vehicle Speed"
+    id: vehicle_speed
+    unit_of_measurement: "mph"
+    accuracy_decimals: 1
+    device_class: "speed"
+    lambda: |-
+      // Speed calculation from NavitasMotorControllerModel.js:726-742
+      float rpm = id(motor_rpm).state;
+      float tire_diameter = id(tire_diameter).state; // inches
+      float gear_ratio = id(rear_axle_ratio).state;
+
+      if (isnan(rpm) || isnan(tire_diameter) || isnan(gear_ratio)) return {};
+
+      float inches_per_minute_to_mph = 60 * 2 * 3.14159 * 1.57828e-5;
+      float speed = inches_per_minute_to_mph * (abs(rpm) * tire_diameter / 2) / gear_ratio;
+
+      return speed >= 0.0 ? speed : 0.0;
+    update_interval: 1s
+
+# Binary sensors for switch states and fault conditions
+binary_sensor:
+  # Switch States (Address 200 - SWITCHBITS)
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Forward Switch"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: forward_switch
+    lambda: |-
+      uint16_t switch_bits = x[0] | (x[1] << 8);
+      return (switch_bits & 0x0002) == 0x0002;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Reverse Switch"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: reverse_switch
+    lambda: |-
+      uint16_t switch_bits = x[0] | (x[1] << 8);
+      return (switch_bits & 0x0004) == 0x0004;
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Key Switch"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: key_switch
+    lambda: |-
+      uint16_t switch_bits = x[0] | (x[1] << 8);
+      return (switch_bits & 0x0010) == 0x0010;
+
+  # Neutral state (both forward and reverse switches on, or both off)
+  - platform: template
+    name: "Neutral"
+    id: neutral_state
+    lambda: |-
+      bool forward = id(forward_switch).state;
+      bool reverse = id(reverse_switch).state;
+      return (forward && reverse) || (!forward && !reverse);
+
+  # Fault States (Address 159 - GROUPONEFAULTS)
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Controller Fault Group 1"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: fault_group_1
+    device_class: "problem"
+    lambda: |-
+      uint16_t faults = x[0] | (x[1] << 8);
+      return faults != 0;
+
+# Text sensors for operational states
+text_sensor:
+  - platform: template
+    name: "Drive Mode"
+    id: drive_mode
+    lambda: |-
+      bool forward = id(forward_switch).state;
+      bool reverse = id(reverse_switch).state;
+
+      if (forward && !reverse) return {"Forward"};
+      else if (!forward && reverse) return {"Reverse"};
+      else return {"Neutral"};
+    update_interval: 1s
+
+# Configuration parameters (Flash memory - Address 155 for tire diameter)
+number:
+  - platform: ble_client
+    ble_client_id: navitas_tac_ble_client
+    name: "Tire Diameter"
+    service_uuid: "12345678-1234-1234-1234-123456789ABC"
+    characteristic_uuid: "12345678-1234-1234-1234-123456789ABC"
+    id: tire_diameter
+    unit_of_measurement: "inches"
+    min_value: 10
+    max_value: 50
+    step: 0.1
+    # Address 155, Scale 64, Flash memory
+    lambda: |-
+      uint16_t raw = x[0] | (x[1] << 8);
+      return raw / 64.0;
+
+  - platform: template
+    name: "Rear Axle Ratio"
+    id: rear_axle_ratio
+    optimistic: true
+    min_value: 1.0
+    max_value: 20.0
+    step: 0.1
+    initial_value: 12.44 # Common golf cart ratio
+    restore_value: true
+
+# # Custom C++ component for TAC protocol handling
+# esphome:
+#   includes:
+#     - tac_controller.h
+#   libraries:
+#     - "ArduinoBLE"
+
+# Add custom automation for connection handling
+automation:
+  - trigger:
+      - platform: time
+        seconds: /30 # Update every 30 seconds
+    action:
+      - if:
+          condition:
+            ble_client.connected:
+              id: navitas_tac_ble_client
+          then:
+            - logger.log: "TAC Controller connected - reading parameters"
+            # Add custom actions to read all parameters
+          else:
+            - logger.log: "TAC Controller disconnected - attempting reconnection"
+            - ble_client.connect:
+                id: navitas_tac_ble_client
+
+# Status LED
+light:
+  - platform: status_led
+    name: "Status LED"
+    pin: GPIO2

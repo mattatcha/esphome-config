@@ -1,0 +1,168 @@
+esphome:
+  name: navitas-tac-discovery
+  friendly_name: "Navitas TAC Controller Discovery"
+  includes:
+    - tac_discovery.h
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+packages:
+  common: !include ../.common.yaml
+
+# Enable logging with debug level to see all BLE discoveries
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: DEBUG
+    ble_client: DEBUG
+
+web_server:
+  port: 80
+
+# BLE tracker for discovery
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+  on_ble_advertise:
+    - lambda: |-
+        // Log all discovered BLE devices
+        ESP_LOGD("ble_discovery", "Found BLE device:");
+        ESP_LOGD("ble_discovery", "  Address: %s", x.address_str().c_str());
+        ESP_LOGD("ble_discovery", "  Name: %s", x.get_name().c_str());
+        ESP_LOGD("ble_discovery", "  RSSI: %d dB", x.get_rssi());
+        ESP_LOGD("ble_discovery", "  TX Power: %d dB", x.get_tx_powers().empty() ? 0 : x.get_tx_powers()[0]);
+
+        // Look for potential Navitas/TAC devices
+        std::string name = x.get_name();
+        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+
+        bool potential_tac = false;
+
+        // Check for common Navitas/TAC naming patterns
+        if (name.find("navitas") != std::string::npos ||
+            name.find("tac") != std::string::npos ||
+            name.find("golf") != std::string::npos ||
+            name.find("cart") != std::string::npos ||
+            name.find("motor") != std::string::npos ||
+            name.find("controller") != std::string::npos) {
+          potential_tac = true;
+        }
+
+        // Also check for devices with strong signal that might be unnamed TAC controllers
+        if (x.get_rssi() > -60 && (name.empty() || name == "unknown")) {
+          potential_tac = true;
+        }
+
+        if (potential_tac) {
+          ESP_LOGW("tac_candidate", "*** POTENTIAL TAC CONTROLLER FOUND ***");
+          ESP_LOGW("tac_candidate", "Address: %s", x.address_str().c_str());
+          ESP_LOGW("tac_candidate", "Name: %s", x.get_name().c_str());
+          ESP_LOGW("tac_candidate", "RSSI: %d dB", x.get_rssi());
+
+          // Log service UUIDs if available
+          for (auto uuid : x.get_service_uuids()) {
+            ESP_LOGW("tac_candidate", "Service UUID: %s", uuid.to_string().c_str());
+          }
+
+          // Store this as a potential candidate
+          id(tac_candidates).push_back(x.address_str());
+        }
+
+# Global variable to store potential TAC controller addresses
+globals:
+  - id: tac_candidates
+    type: std::vector<std::string>
+    restore_value: false
+  - id: current_scan_device
+    type: std::string
+    restore_value: false
+  - id: discovery_complete
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+# Text sensor to display discovered candidates
+text_sensor:
+  - platform: template
+    name: "TAC Candidates Found"
+    id: tac_candidates_display
+    lambda: |-
+      std::string result = "Candidates: ";
+      for (const auto& addr : id(tac_candidates)) {
+        result += addr + " ";
+      }
+      return {result};
+    update_interval: 5s
+
+  - platform: template
+    name: "Discovery Status"
+    id: discovery_status
+    lambda: |-
+      if (id(discovery_complete)) {
+        return {"Discovery Complete - Check logs for details"};
+      } else {
+        return {"Scanning for TAC controllers..."};
+      }
+    update_interval: 2s
+
+# Button to trigger detailed service discovery on found candidates
+button:
+  - platform: template
+    name: "Scan TAC Services"
+    id: scan_tac_services
+    on_press:
+      - lambda: |-
+          ESP_LOGW("service_scan", "Starting detailed service scan of TAC candidates...");
+          id(discovery_complete) = false;
+
+          // Log detailed instructions for each candidate
+          ESP_LOGW("instructions", "=== TAC CONTROLLER SETUP INSTRUCTIONS ===");
+          ESP_LOGW("instructions", "Found %d potential TAC controller(s):", id(tac_candidates).size());
+
+          for (size_t i = 0; i < id(tac_candidates).size(); i++) {
+            ESP_LOGW("instructions", "");
+            ESP_LOGW("instructions", "Candidate %d: %s", i+1, id(tac_candidates)[i].c_str());
+            ESP_LOGW("instructions", "To use this device, update your main config:");
+            ESP_LOGW("instructions", "ble_client:");
+            ESP_LOGW("instructions", "  - mac_address: \"%s\"", id(tac_candidates)[i].c_str());
+            ESP_LOGW("instructions", "    id: navitas_tac_ble_client");
+            ESP_LOGW("instructions", "");
+          }
+
+          ESP_LOGW("instructions", "Next steps:");
+          ESP_LOGW("instructions", "1. Use nRF Connect app to connect to each candidate");
+          ESP_LOGW("instructions", "2. Browse services and characteristics");
+          ESP_LOGW("instructions", "3. Look for services with read/write/notify characteristics");
+          ESP_LOGW("instructions", "4. Test reading data from different characteristics");
+          ESP_LOGW("instructions", "5. Update the main config with correct UUIDs");
+          ESP_LOGW("instructions", "");
+
+          id(discovery_complete) = true;
+
+# Service discovery via button press instead of automation
+# (automation component not available in this ESPHome version)
+
+# Custom component for advanced BLE discovery
+
+# Status LED to show discovery activity
+light:
+  - platform: status_led
+    name: "Discovery Status LED"
+    pin: GPIO2
+
+# Switch to control discovery scanning
+switch:
+  - platform: template
+    name: "BLE Discovery Active"
+    id: discovery_active
+    optimistic: true
+    turn_on_action:
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+    turn_off_action:
+      - esp32_ble_tracker.stop_scan:
