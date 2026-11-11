@@ -226,6 +226,13 @@ sensor:
       then:
         - component.update: total_power
         - component.update: balance_power
+        # combined 240V loads -- see the "Combined 240V loads" section below
+        - component.update: upstairs_minisplit_power
+        - component.update: water_heater_power
+        - component.update: ac_condenser_power
+        - component.update: ac_blower_power
+        - component.update: pool_power
+        - component.update: master_minisplit_power
 
   - { platform: copy, name: "Phase A Power", source_id: phase_a_power, filters: *throttle_avg }
   - { platform: copy, name: "Phase B Power", source_id: phase_b_power, filters: *throttle_avg }
@@ -247,6 +254,7 @@ sensor:
   - { platform: copy, name: "Circuit 16 Power", source_id: cir16, filters: *throttle_avg }
 
   - platform: template
+    name: "Total Power"
     lambda: return id(phase_a_power).state + id(phase_b_power).state;
     update_interval: never
     id: total_power
@@ -315,3 +323,80 @@ sensor:
   - { power_id: cir14, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Circuit 14 Daily Energy", filters: *throttle_time }
   - { power_id: cir15, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Circuit 15 Daily Energy", filters: *throttle_time }
   - { power_id: cir16, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Circuit 16 Daily Energy", filters: *throttle_time }
+
+  # --- Combined 240V loads ----------------------------------------------------
+  # Each load below is one 240V appliance clamped on both legs. Every CT reports
+  # I * 120V, so summing the pair gives the true I * 240V draw. The per-leg
+  # "Circuit N" sensors above are kept -- they are the only place leg imbalance
+  # is visible.
+  #
+  # Do NOT add these to balance_power's subtraction list: it already subtracts
+  # each cirN individually, so subtracting the sums too would double-subtract.
+  #
+  # Circuits 3, 4, 15 and 16 are single-leg or unidentified and stay separate.
+
+  - platform: template
+    name: "Upstairs Minisplit Power"
+    lambda: return id(cir1).state + id(cir2).state;
+    update_interval: never
+    id: upstairs_minisplit_power
+    device_class: power
+    state_class: measurement
+    unit_of_measurement: "W"
+    filters: *throttle_avg
+  - { power_id: upstairs_minisplit_power, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Upstairs Minisplit Daily Energy", filters: *throttle_time }
+
+  - platform: template
+    name: "Water Heater Power"
+    lambda: return id(cir5).state + id(cir6).state;
+    update_interval: never
+    id: water_heater_power
+    device_class: power
+    state_class: measurement
+    unit_of_measurement: "W"
+    filters: *throttle_avg
+  - { power_id: water_heater_power, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Water Heater Daily Energy", filters: *throttle_time }
+
+  - platform: template
+    name: "AC Condenser Power"
+    lambda: return id(cir7).state + id(cir8).state;
+    update_interval: never
+    id: ac_condenser_power
+    device_class: power
+    state_class: measurement
+    unit_of_measurement: "W"
+    filters: *throttle_avg
+  - { power_id: ac_condenser_power, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "AC Condenser Daily Energy", filters: *throttle_time }
+
+  - platform: template
+    name: "AC Blower Power"
+    lambda: return id(cir9).state + id(cir10).state;
+    update_interval: never
+    id: ac_blower_power
+    device_class: power
+    state_class: measurement
+    unit_of_measurement: "W"
+    filters: *throttle_avg
+  - { power_id: ac_blower_power, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "AC Blower Daily Energy", filters: *throttle_time }
+
+  - platform: template
+    name: "Pool Power"
+    lambda: return id(cir11).state + id(cir12).state;
+    update_interval: never
+    id: pool_power
+    device_class: power
+    state_class: measurement
+    unit_of_measurement: "W"
+    filters: *throttle_avg
+  - { power_id: pool_power, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Pool Daily Energy", filters: *throttle_time }
+
+  - platform: template
+    name: "Master Minisplit Power"
+    lambda: return id(cir13).state + id(cir14).state;
+    update_interval: never
+    id: master_minisplit_power
+    device_class: power
+    state_class: measurement
+    unit_of_measurement: "W"
+    filters: *throttle_avg
+  - { power_id: master_minisplit_power, platform: total_daily_energy, accuracy_decimals: 0, restore: false, name: "Master Minisplit Daily Energy", filters: *throttle_time }
