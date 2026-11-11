@@ -1,0 +1,508 @@
+esphome:
+  name: navitas-tac-client
+  friendly_name: "Navitas TAC Controller Client"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+packages:
+  common: !include ../.common.yaml
+
+# Enable logging
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: DEBUG
+    ble_client: DEBUG
+
+# BLE tracker for client connections
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+web_server:
+  port: 80
+
+# BLE client configuration for Navitas TAC controller
+# Service UUIDs found in decompiled Android app:
+# - 0000fff0-0000-1000-8000-00805f9b34fb (primary service)
+# - 0000ffb0-0000-1000-8000-00805f9b34fb (secondary service)
+ble_client:
+  - mac_address: AA:BB:CC:DD:EE:FF # Replace with your TAC controller MAC address
+    id: navitas_tac_client
+    auto_connect: true
+    on_connect:
+      - logger.log: "Connected to Navitas TAC Controller"
+      - lambda: |-
+          id(connection_status).publish_state(true);
+      # Protocol Initialization: Enable notifications as seen in packet dump
+      - delay: 500ms
+      # - ble_client.ble_write:
+      #     id: navitas_tac_client
+      #     service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+      #     characteristic_uuid: "0000ffb2-0000-1000-8000-00805f9b34fb"
+      #     descriptor_uuid: "00002902-0000-1000-8000-00805f9b34fb"
+      #     value: [0x01, 0x00]  # Enable notifications
+      # Send initial protocol handshake (0x41) as seen in dump
+      - delay: 100ms
+      - ble_client.ble_write:
+          id: navitas_tac_client
+          service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+          characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+          value: [0x41]
+      # TAC Protocol Communication: Send TSX controller type query
+      - delay: 500ms
+      - ble_client.ble_write:
+          id: navitas_tac_client
+          service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+          characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+          value: !lambda |-
+            // TSX controller type query: [STX][TSX][SEQ][CMD][LEN][DATA][CRC][ETX]
+            std::vector<uint8_t> packet = {
+              0x02,        // STX
+              0x54, 0x53, 0x58,  // "TSX"
+              0x00,        // Sequence
+              0x20,        // Command (read parameters)
+              0x02,        // Length
+              0x01, 0x28,  // Address range parameters
+              0x00, 0x00, 0x03  // Checksum placeholders, ETX
+            };
+
+            // Calculate Fletcher-16 checksum
+            uint8_t sum1 = 255, sum2 = 255;
+            for (size_t i = 0; i < packet.size() - 3; i++) {
+              sum1 += packet[i];
+              sum2 += sum1;
+              sum1 = (sum1 & 0xFF) + (sum1 >> 8);
+              sum2 = (sum2 & 0xFF) + (sum2 >> 8);
+            }
+            sum1 = (sum1 & 0xFF) + (sum1 >> 8);
+            sum2 = (sum2 & 0xFF) + (sum2 >> 8);
+
+            packet[packet.size() - 3] = sum1;
+            packet[packet.size() - 2] = sum2;
+
+            ESP_LOGI("tac_client", "Sending TSX controller type query");
+            return packet;
+      # Send parameter read commands as seen in dump
+      # - delay: 1s
+      # - ble_client.ble_write:
+      #     id: navitas_tac_client
+      #     service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+      #     characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+      #     value: [0x02, 0x54, 0x53, 0x58, 0x00, 0x20, 0x32, 0x2B, 0x46, 0x47, 0x4F, 0x5F, 0x60, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0xB1, 0xB3]
+      # - ble_client.ble_write:
+      #     id: navitas_tac_client
+      #     service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+      #     characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+      #     value: [0xB4, 0xB5, 0xB6, 0xC5, 0xC6, 0xC7, 0xD7, 0xF2, 0xF6, 0xF8, 0xFA, 0xD1, 0xD2, 0x00, 0x01, 0x02, 0x0F, 0x10, 0x18, 0x25]
+      # - ble_client.ble_write:
+      #     id: navitas_tac_client
+      #     service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+      #     characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+      #     value: [0x26, 0x29, 0x56, 0x5B, 0x6F, 0x93, 0x9F, 0xA0, 0xA1, 0xA2, 0xB0, 0xF1, 0x7B, 0x7C, 0x7D, 0x20, 0x20, 0x96, 0x90, 0x03]
+    on_disconnect:
+      - logger.log: "Disconnected from Navitas TAC Controller"
+      - lambda: |-
+          id(connection_status).publish_state(false);
+
+# Global variables for data storage
+globals:
+  - id: last_packet_data
+    type: std::vector<uint8_t>
+    restore_value: false
+  - id: communication_active
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: response_buffer
+    type: std::vector<uint8_t>
+    restore_value: false
+  - id: expected_response_length
+    type: int
+    restore_value: false
+    initial_value: "0"
+
+# Binary sensor for connection status
+binary_sensor:
+  - platform: template
+    name: "TAC Controller Connected"
+    id: connection_status
+
+# Sensors for TAC controller data
+sensor:
+  - platform: template
+    name: "Battery Voltage"
+    id: battery_voltage
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: voltage
+
+  - platform: template
+    name: "Motor Current"
+    id: motor_current
+    unit_of_measurement: "A"
+    accuracy_decimals: 2
+    device_class: current
+
+  - platform: template
+    name: "Controller Temperature"
+    id: controller_temp
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    device_class: temperature
+
+  - platform: template
+    name: "Speed"
+    id: vehicle_speed
+    unit_of_measurement: "mph"
+    accuracy_decimals: 1
+    icon: mdi:speedometer
+
+# Text sensor for controller state
+text_sensor:
+  - platform: template
+    name: "Controller State"
+    id: controller_state
+
+  - platform: ble_client
+    ble_client_id: navitas_tac_client
+    name: "Sensor"
+    service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+    characteristic_uuid: "0000ffb2-0000-1000-8000-00805f9b34fb"
+    descriptor_uuid: "00002902-0000-1000-8000-00805f9b34fb"
+    # descriptor_uuid: "00002902-0000-1000-8000-00805f9b34fb"
+    update_interval: never
+
+    notify: true
+    on_notify:
+      - lambda: |-
+          size_t length = x.size();
+          ESP_LOGI("tac_communication", "Received %d bytes from TAC controller", x.size());
+
+          // Log the raw data for debugging
+          std::string hex_data = "";
+          for (int i = 0; i < length; i++) {
+            char hex[3];
+            sprintf(hex, "%02X", x[i]);
+            hex_data += hex;
+            if (i < length - 1) hex_data += " ";
+          }
+          ESP_LOGD("tac_communication", "Raw data: %s", hex_data.c_str());
+
+          // Check if this is the start of a new TAC response
+          if (length >= 6 && x[0] == 0x02 && x[1] == 0x54 && x[2] == 0x41 && x[3] == 0x43) {
+            ESP_LOGI("tac_communication", "New TAC response started");
+            
+            uint8_t sequence = x[4];
+            uint8_t command = x[5];
+            uint8_t data_length = x[6];
+            
+            ESP_LOGD("tac_communication", "SEQ: 0x%02X, CMD: 0x%02X, LEN: %d", sequence, command, data_length);
+            
+            // Initialize response buffer with expected total length (as per C# code)
+            id(expected_response_length) = data_length + 10; // data_length + 10 bytes (header/footer)
+            id(response_buffer).clear();
+            
+            // Add current packet data to buffer
+            for (int i = 0; i < length; i++) {
+              id(response_buffer).push_back(x[i]);
+            }
+            
+            ESP_LOGD("tac_communication", "Buffer has %d bytes, expecting %d total", 
+                     id(response_buffer).size(), id(expected_response_length));
+          }
+          else {
+            // This is a continuation packet - add to buffer
+            if (id(expected_response_length) > 0) {
+              for (int i = 0; i < length; i++) {
+                id(response_buffer).push_back(x[i]);
+              }
+              ESP_LOGD("tac_communication", "Added continuation data, buffer now has %d bytes", 
+                       id(response_buffer).size());
+            }
+          }
+          
+          // Check if we have complete response
+          if (id(expected_response_length) > 0 && id(response_buffer).size() >= id(expected_response_length)) {
+            ESP_LOGI("tac_communication", "Complete TAC response assembled (%d bytes)", 
+                     id(response_buffer).size());
+            
+            auto& buffer = id(response_buffer);
+            uint8_t command = buffer[5];
+            uint8_t data_length = buffer[6];
+            
+            // Parse parameter data for command 0x20 (read parameters)  
+            if (command == 0x20) {
+              ESP_LOGI("tac_communication", "Parsing parameter data (%d bytes)", data_length);
+              
+              // Based on C# code: data payload starts at position 7, is data_length bytes
+              // Parameters are 2-byte values, no individual address bytes in response
+              // Addresses are determined by request order, values are little-endian
+              for (int i = 7; i < 7 + data_length; i += 2) {
+                if (i + 1 < buffer.size()) {
+                  uint16_t value = (buffer[i+1] << 8) | buffer[i]; // Little endian
+                  int param_index = (i - 7) / 2; // Parameter index based on position
+                  
+                  // Map parameter index to actual address from request
+                  // Request order: 0x2B, 0x46, 0x47, 0x4F, 0x5F, 0x60, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0xB1, 0xB3...
+                  uint8_t requested_addresses[] = {0x2B, 0x46, 0x47, 0x4F, 0x5F, 0x60, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0xB1, 0xB3};
+                  uint8_t param_addr = (param_index < 13) ? requested_addresses[param_index] : 0xFF;
+                  
+                  ESP_LOGD("tac_communication", "Param[%d] addr 0x%02X: %d (0x%04X)", 
+                           param_index, param_addr, value, value);
+                  
+                  // Decode based on actual parameter addresses from TACDictionary.xml
+                  if (param_addr == 0x00) { // PBTEMPC - Controller Temperature (C), Scale: 16
+                    float temp = value / 16.0f;
+                    if (temp < 200) { 
+                      id(controller_temp).publish_state(temp);
+                      ESP_LOGI("tac_communication", "Controller Temperature: %.1f°C", temp);
+                    }
+                  }
+                  else if (param_addr == 0x01) { // VBATVDC - DC Bus Voltage (V), Scale: 128  
+                    float voltage = value / 128.0f;
+                    if (voltage > 0 && voltage < 100) {
+                      id(battery_voltage).publish_state(voltage);
+                      ESP_LOGI("tac_communication", "Battery Voltage: %.2fV", voltage);
+                    }
+                  }
+                  else if (param_addr == 0x02) { // IBATADC - Battery Current, Scale: 16
+                    float current = value / 16.0f;
+                    if (current < 500) {
+                      id(motor_current).publish_state(current);
+                      ESP_LOGI("tac_communication", "Battery Current: %.2fA", current);
+                    }
+                  }
+                  else {
+                    // Log unknown parameters with various scale factors for analysis
+                    ESP_LOGD("tac_communication", "Addr 0x%02X: %d (%.1f@16, %.2f@128, %.3f@256)", 
+                             param_addr, value, value/16.0f, value/128.0f, value/256.0f);
+                  }
+                }
+              }
+            }
+            
+            // Reset for next response
+            id(expected_response_length) = 0;
+            id(response_buffer).clear();
+          }
+
+# [14:45:54][D][tac_client:142]: Notification received with 10 bytes
+# [14:45:54][D][tac_client:143]: Data: 02.54.41.43.80.00.00.5B.DC.03 (10)
+# Switch to enable/disable communication
+switch:
+  - platform: template
+    name: "Enable Communication"
+    id: enable_communication
+    optimistic: true
+    on_turn_on:
+      - lambda: |-
+          id(communication_active) = true;
+          ESP_LOGI("tac_client", "Communication enabled");
+    on_turn_off:
+      - lambda: |-
+          id(communication_active) = false;
+          ESP_LOGI("tac_client", "Communication disabled");
+
+# Note: Data parsing will be handled in the header file due to complexity
+
+# Automation to periodically request data
+interval:
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            - binary_sensor.is_on: connection_status
+            - switch.is_on: enable_communication
+          then:
+            - ble_client.ble_write:
+                id: navitas_tac_client
+                service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+                characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+                # characteristic_uuid: "00002902-0000-1000-8000-00805f9b34fb"
+                value: !lambda |-
+                  // Send data request packet to TAC controller
+                  // Based on the packet structure found in DeviceComunication.cs
+                  std::vector<uint8_t> packet = {
+                    0x02,        // Start byte
+                    0x54, 0x41, 0x43,  // "TAC"
+                    0x00,        // Sequence
+                    0x20,        // Command (read parameters)
+                    0x02,        // Length
+                    0x01, 0x28,  // Address range parameters
+                    0x00, 0x00, 0x03  // Checksum will be calculated, end byte
+                  };
+
+                  // Calculate Fletcher-16 checksum
+                  uint8_t sum1 = 255, sum2 = 255;
+                  for (size_t i = 0; i < packet.size() - 3; i++) {
+                    sum1 += packet[i];
+                    sum2 += sum1;
+                    sum1 = (sum1 & 0xFF) + (sum1 >> 8);
+                    sum2 = (sum2 & 0xFF) + (sum2 >> 8);
+                  }
+                  sum1 = (sum1 & 0xFF) + (sum1 >> 8);
+                  sum2 = (sum2 & 0xFF) + (sum2 >> 8);
+
+                  packet[packet.size() - 3] = sum1;
+                  packet[packet.size() - 2] = sum2;
+
+                  ESP_LOGD("tac_client", "Sending data request to TAC controller");
+                  return packet;
+
+# Button to manually trigger data request
+button:
+  #
+
+  - platform: template
+    name: "Write Data"
+    on_press:
+      - logger.log: "Manual data request triggered"
+      - ble_client.ble_write:
+          id: navitas_tac_client
+          service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+          characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+          value:
+            [
+              0x02,
+              0x54,
+              0x53,
+              0x58,
+              0x00,
+              0x20,
+              0x32,
+              0x2B,
+              0x46,
+              0x47,
+              0x4F,
+              0x5F,
+              0x60,
+              0x98,
+              0x99,
+              0x9A,
+              0x9B,
+              0x9C,
+              0xB1,
+              0xB3,
+            ]
+      - ble_client.ble_write:
+          id: navitas_tac_client
+          service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+          characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+          value:
+            [
+              0xB4,
+              0xB5,
+              0xB6,
+              0xC5,
+              0xC6,
+              0xC7,
+              0xD7,
+              0xF2,
+              0xF6,
+              0xF8,
+              0xFA,
+              0xD1,
+              0xD2,
+              0x00,
+              0x01,
+              0x02,
+              0x0F,
+              0x10,
+              0x18,
+              0x25,
+            ]
+      - ble_client.ble_write:
+          id: navitas_tac_client
+          service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+          characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+          value:
+            [
+              0x26,
+              0x29,
+              0x56,
+              0x5B,
+              0x6F,
+              0x93,
+              0x9F,
+              0xA0,
+              0xA1,
+              0xA2,
+              0xB0,
+              0xF1,
+              0x7B,
+              0x7C,
+              0x7D,
+              0x20,
+              0x20,
+              0x96,
+              0x90,
+              0x03,
+            ]
+
+    #          <GoiParameter>
+    #     <PropertyName>VBATVDC</PropertyName>
+    #     <Address>1</Address>
+    #     <SubsetOfAddress>false</SubsetOfAddress>
+    #     <Scale>128</Scale>
+    #     <MemoryType>ReadOrWrite</MemoryType>
+    #     <BitRangeStart>0</BitRangeStart>
+    #     <BitRangeEnd>15</BitRangeEnd>
+    #     <MinimumParameterValue>0</MinimumParameterValue>
+    #     <MaximumParameterValue>127.9921875</MaximumParameterValue>
+    #     <ImplementedFirmwareVersion>0.0</ImplementedFirmwareVersion>
+
+    #     <Name>DC Bus Voltage (V)</Name>
+    #     <Description>
+    #         <![CDATA[
+    #     ]]>
+    #     </Description>
+    # </GoiParameter>
+  - platform: template
+    name: "Request TAC Data"
+    on_press:
+      - logger.log: "Manual data request triggered"
+      - ble_client.ble_write:
+          id: navitas_tac_client
+          service_uuid: "0000ffb0-0000-1000-8000-00805f9b34fb"
+          characteristic_uuid: "0000ffb1-0000-1000-8000-00805f9b34fb"
+          value: !lambda |-
+            // Same packet as in the interval
+            std::vector<uint8_t> packet = {
+              0x02,        // Start byte
+              0x54, 0x41, 0x43,  // "TAC"
+              0x00,        // Sequence
+              0x20,        // Command (read parameters)
+              0x02,        // Length
+              0x01, 0x28,  // Address range parameters
+              0x00, 0x00, 0x03  // Checksum will be calculated, end byte
+            };
+
+
+            // Calculate Fletcher-16 checksum
+            uint8_t sum1 = 255, sum2 = 255;
+            for (size_t i = 0; i < packet.size() - 3; i++) {
+              sum1 += packet[i];
+              sum2 += sum1;
+              sum1 = (sum1 & 0xFF) + (sum1 >> 8);
+              sum2 = (sum2 & 0xFF) + (sum2 >> 8);
+            }
+            sum1 = (sum1 & 0xFF) + (sum1 >> 8);
+            sum2 = (sum2 & 0xFF) + (sum2 >> 8);
+
+            packet[packet.size() - 3] = sum1;
+            packet[packet.size() - 2] = sum2;
+
+            ESP_LOGI("tac_client", "Manual data request sent");
+            return packet;
+
+# Status LED
+light:
+  - platform: status_led
+    name: "Communication Status LED"
+    pin: GPIO2

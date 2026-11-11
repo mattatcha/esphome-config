@@ -21,5 +21,5 @@ script:
                   - logger.log:
                       format: "${pump_id} position : %d"
                       args: ["id(${pump_id}).current_position"]
-                  - delay: 5s
+                  - delay: 1s
             - logger.log: "${chemical} dosing done!"

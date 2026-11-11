@@ -1,0 +1,312 @@
+esphome:
+  name: navitas-tac-auto
+  friendly_name: "Navitas TAC Auto-Discovery"
+  platform: ESP32
+  board: esp32dev
+
+# Enable logging
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO  # Reduce BLE spam in normal operation
+    ble_client: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  ap:
+    ssid: "TAC-Auto Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# BLE tracker with smart discovery
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+  on_ble_advertise:
+    - lambda: |-
+        // Smart TAC controller detection
+        std::string name = x.get_name();
+        std::string name_lower = name;
+        std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+        
+        bool is_potential_tac = false;
+        int confidence_score = 0;
+        
+        // Name-based detection
+        if (name_lower.find("navitas") != std::string::npos) {
+          is_potential_tac = true;
+          confidence_score += 50;
+        } else if (name_lower.find("tac") != std::string::npos) {
+          is_potential_tac = true;
+          confidence_score += 40;
+        } else if (name_lower.find("golf") != std::string::npos || 
+                   name_lower.find("cart") != std::string::npos) {
+          is_potential_tac = true;
+          confidence_score += 30;
+        } else if (name_lower.find("motor") != std::string::npos || 
+                   name_lower.find("controller") != std::string::npos) {
+          is_potential_tac = true;
+          confidence_score += 25;
+        }
+        
+        // Signal strength based detection for unnamed devices
+        if (x.get_rssi() > -60 && name.empty()) {
+          is_potential_tac = true;
+          confidence_score += 20;
+        }
+        
+        // Service UUID based detection
+        for (auto uuid : x.get_service_uuids()) {
+          std::string uuid_str = uuid.to_string();
+          // Look for common motor controller service patterns
+          if (uuid_str.length() == 36) {  // Full UUID
+            confidence_score += 10;
+          }
+        }
+        
+        if (is_potential_tac && confidence_score >= 20) {
+          ESP_LOGW("tac_discovery", "*** POTENTIAL TAC CONTROLLER FOUND ***");
+          ESP_LOGW("tac_discovery", "Address: %s", x.address_str().c_str());
+          ESP_LOGW("tac_discovery", "Name: %s", name.c_str());
+          ESP_LOGW("tac_discovery", "RSSI: %d dB", x.get_rssi());
+          ESP_LOGW("tac_discovery", "Confidence: %d/100", confidence_score);
+          
+          // Store as current best candidate if better than existing
+          if (confidence_score > id(best_confidence) || 
+              (confidence_score == id(best_confidence) && x.get_rssi() > id(best_rssi))) {
+            id(tac_mac_address) = x.address_str();
+            id(tac_device_name) = name;
+            id(best_confidence) = confidence_score;
+            id(best_rssi) = x.get_rssi();
+            
+            ESP_LOGW("tac_discovery", "*** NEW BEST CANDIDATE ***");
+            ESP_LOGW("tac_discovery", "This device is now the primary candidate");
+          }
+          
+          // Log service UUIDs for debugging
+          for (auto uuid : x.get_service_uuids()) {
+            ESP_LOGW("tac_discovery", "Service UUID: %s", uuid.to_string().c_str());
+          }
+        }
+
+# Global variables to store discovery results
+globals:
+  - id: tac_mac_address
+    type: std::string
+    restore_value: true
+    initial_value: '""'
+  - id: tac_device_name
+    type: std::string
+    restore_value: true
+    initial_value: '""'
+  - id: best_confidence
+    type: int
+    restore_value: true
+    initial_value: '0'
+  - id: best_rssi
+    type: int
+    restore_value: true
+    initial_value: '-100'
+  - id: discovery_mode
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+  - id: connection_attempts
+    type: int
+    restore_value: false
+    initial_value: '0'
+
+# Dynamic BLE client that uses discovered MAC address
+ble_client:
+  - mac_address: !lambda 'return id(tac_mac_address).empty() ? "00:00:00:00:00:00" : id(tac_mac_address);'
+    id: navitas_tac_ble_client
+    auto_connect: false  # We'll control connection manually
+    on_connect:
+      - lambda: |-
+          ESP_LOGW("ble_client", "Connected to TAC Controller: %s", id(tac_mac_address).c_str());
+          id(discovery_mode) = false;
+          id(connection_attempts) = 0;
+      - delay: 2s
+      - lambda: |-
+          ESP_LOGW("ble_client", "Starting service discovery...");
+          // Here we would normally discover services, but ESPHome doesn't expose this directly
+          // Instead, we'll provide instructions for manual service discovery
+    on_disconnect:
+      - lambda: |-
+          ESP_LOGW("ble_client", "Disconnected from TAC Controller");
+          if (id(connection_attempts) < 3) {
+            ESP_LOGW("ble_client", "Will retry connection in 10 seconds...");
+          }
+
+# Text sensors to display discovery status
+text_sensor:
+  - platform: template
+    name: "Discovered TAC MAC"
+    id: discovered_mac_display
+    lambda: |-
+      return {id(tac_mac_address)};
+    update_interval: 5s
+
+  - platform: template
+    name: "Discovered TAC Name"
+    id: discovered_name_display
+    lambda: |-
+      return {id(tac_device_name)};
+    update_interval: 5s
+
+  - platform: template
+    name: "Discovery Status"
+    id: discovery_status_display
+    lambda: |-
+      if (id(tac_mac_address).empty()) {
+        return {"Scanning for TAC controllers..."};
+      } else if (id(discovery_mode)) {
+        return {"TAC found - ready to connect"};
+      } else {
+        return {"Connected to TAC controller"};
+      }
+    update_interval: 2s
+
+# Sensors to show discovery metrics
+sensor:
+  - platform: template
+    name: "TAC Signal Strength"
+    id: tac_signal_strength
+    unit_of_measurement: "dB"
+    device_class: "signal_strength"
+    lambda: |-
+      return id(best_rssi);
+    update_interval: 10s
+
+  - platform: template
+    name: "Discovery Confidence"
+    id: discovery_confidence
+    unit_of_measurement: "%"
+    lambda: |-
+      return id(best_confidence);
+    update_interval: 10s
+
+# Buttons for manual control
+button:
+  - platform: template
+    name: "Connect to TAC"
+    id: connect_to_tac
+    on_press:
+      - if:
+          condition:
+            - lambda: 'return !id(tac_mac_address).empty();'
+          then:
+            - lambda: |-
+                ESP_LOGW("manual_connect", "Attempting to connect to: %s", id(tac_mac_address).c_str());
+                id(connection_attempts)++;
+            - ble_client.connect:
+                id: navitas_tac_ble_client
+          else:
+            - logger.log: "No TAC controller discovered yet - wait for discovery"
+
+  - platform: template
+    name: "Restart Discovery"
+    id: restart_discovery
+    on_press:
+      - lambda: |-
+          ESP_LOGW("manual_discovery", "Restarting TAC discovery...");
+          id(tac_mac_address) = "";
+          id(tac_device_name) = "";
+          id(best_confidence) = 0;
+          id(best_rssi) = -100;
+          id(discovery_mode) = true;
+          id(connection_attempts) = 0;
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+
+  - platform: template
+    name: "Generate Config"
+    id: generate_config
+    on_press:
+      - lambda: |-
+          ESP_LOGW("config_gen", "=== GENERATED CONFIGURATION ===");
+          if (id(tac_mac_address).empty()) {
+            ESP_LOGW("config_gen", "No TAC controller discovered yet!");
+            return;
+          }
+          
+          ESP_LOGW("config_gen", "Discovered TAC Controller:");
+          ESP_LOGW("config_gen", "  MAC Address: %s", id(tac_mac_address).c_str());
+          ESP_LOGW("config_gen", "  Name: %s", id(tac_device_name).c_str());
+          ESP_LOGW("config_gen", "  Signal: %d dB", id(best_rssi));
+          ESP_LOGW("config_gen", "  Confidence: %d%%", id(best_confidence));
+          ESP_LOGW("config_gen", "");
+          ESP_LOGW("config_gen", "Add to your main ESPHome config:");
+          ESP_LOGW("config_gen", "");
+          ESP_LOGW("config_gen", "ble_client:");
+          ESP_LOGW("config_gen", "  - mac_address: \"%s\"", id(tac_mac_address).c_str());
+          ESP_LOGW("config_gen", "    id: navitas_tac_ble_client");
+          ESP_LOGW("config_gen", "    auto_connect: true");
+          ESP_LOGW("config_gen", "");
+          ESP_LOGW("config_gen", "NEXT STEPS:");
+          ESP_LOGW("config_gen", "1. Use nRF Connect app to connect to %s", id(tac_mac_address).c_str());
+          ESP_LOGW("config_gen", "2. Browse services and characteristics");
+          ESP_LOGW("config_gen", "3. Look for services with multiple characteristics");
+          ESP_LOGW("config_gen", "4. Test reading from different characteristics");
+          ESP_LOGW("config_gen", "5. Update the main config with working UUIDs");
+
+# Automated discovery and connection logic
+automation:
+  - trigger:
+      - platform: time
+        seconds: /30  # Check every 30 seconds
+    condition:
+      - lambda: 'return !id(tac_mac_address).empty() && id(discovery_mode);'
+    action:
+      - logger.log: "TAC controller discovered - attempting connection"
+      - ble_client.connect:
+          id: navitas_tac_ble_client
+
+  - trigger:
+      - platform: time
+        minutes: /2  # Every 2 minutes
+    condition:
+      - lambda: 'return id(tac_mac_address).empty();'
+    action:
+      - logger.log: "No TAC controller found yet - continuing discovery"
+
+# Switch to control discovery mode
+switch:
+  - platform: template
+    name: "Auto Discovery"
+    id: auto_discovery_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - lambda: 'id(discovery_mode) = true;'
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+    turn_off_action:
+      - lambda: 'id(discovery_mode) = false;'
+      - esp32_ble_tracker.stop_scan:
+
+# Binary sensor to show connection status
+binary_sensor:
+  - platform: ble_presence
+    mac_address: !lambda 'return id(tac_mac_address).empty() ? "00:00:00:00:00:00" : id(tac_mac_address);'
+    name: "TAC Controller Present"
+    id: tac_present
+
+# Status LED
+light:
+  - platform: status_led
+    name: "Auto Discovery Status"
+    pin: GPIO2

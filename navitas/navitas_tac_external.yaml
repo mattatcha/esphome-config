@@ -1,0 +1,64 @@
+esphome:
+  name: navitas-tac-client
+  friendly_name: "Navitas TAC Controller (External Component)"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+packages:
+  common: !include ../.common.yaml
+
+external_components:
+  - source: ../components
+    components: [navitas_tac]
+
+logger:
+  level: DEBUG
+  logs:
+    navitas_tac: DEBUG
+    esp32_ble_tracker: DEBUG
+    ble_client: DEBUG
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+web_server:
+  port: 80
+
+ble_client:
+  - mac_address: AA:BB:CC:DD:EE:FF
+    id: navitas_tac_ble_client
+
+# Navitas TAC Controller component
+navitas_tac:
+  ble_client_id: navitas_tac_ble_client
+  id: tac_controller
+  update_interval: 5s
+
+sensor:
+  - platform: navitas_tac
+    controller_temperature:
+      name: "Controller Temperature"
+    dc_bus_voltage:
+      name: "DC Bus Voltage"
+    battery_current:
+      name: "Battery Current"
+    motor_rpm:
+      name: "Motor RPM"
+    motor_temperature:
+      name: "Motor Temperature"
+    speed:
+      name: "Vehicle Speed"
+    soc:
+      name: "State of Charge"
+text_sensor:
+# Status LED
+light:
+  - platform: status_led
+    name: "Communication Status LED"
+    pin: GPIO2
