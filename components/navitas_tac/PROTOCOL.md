@@ -123,7 +123,7 @@ if ((switch_bits & 0x0006) == 0x0006) {
     gear_state = "Neutral";
 } else if ((switch_bits & 0x0002) == 0x0002) {
     // Forward bit only = Forward
-    gear_state = "Forward"; 
+    gear_state = "Forward";
 } else if ((switch_bits & 0x0004) == 0x0004) {
     // Reverse bit only = Reverse
     gear_state = "Reverse";
@@ -158,29 +158,29 @@ The protocol uses Fletcher-16 checksum for data integrity:
 void fletcher16(std::vector<uint8_t> &packet) {
     uint32_t sum1 = 255;
     uint32_t sum2 = 255;
-    
+
     // Calculate on all bytes except last 3 (CRC + ETX)
     int len = packet.size() - 3;
     int index = 0;
-    
+
     while (len > 0) {
         int block_size = len > 21 ? 21 : len;
         len -= block_size;
-        
+
         do {
             sum1 += packet[index];
             sum2 += sum1;
             ++index;
         } while (--block_size > 0);
-        
+
         sum1 = (sum1 & 0xFF) + (sum1 >> 8);
         sum2 = (sum2 & 0xFF) + (sum2 >> 8);
     }
-    
+
     // Final reduction and insertion
     uint32_t final_sum1 = (sum1 & 0xFF) + (sum1 >> 8);
     uint32_t final_sum2 = (sum2 & 0xFF) + (sum2 >> 8);
-    
+
     packet[packet.size() - 3] = (uint8_t)final_sum1;
     packet[packet.size() - 2] = (uint8_t)final_sum2;
 }
@@ -197,12 +197,12 @@ const size_t CHUNK_SIZE = 20;
 
 while (bytes_sent < data.size()) {
     size_t chunk_size = std::min(CHUNK_SIZE, data.size() - bytes_sent);
-    
+
     // Send chunk via BLE write
     esp_ble_gattc_write_char(..., data + bytes_sent, ...);
-    
+
     bytes_sent += chunk_size;
-    
+
     // 20ms delay between chunks
     if (bytes_sent < data.size()) {
         delay(20);
@@ -228,7 +228,7 @@ The TAC controller organizes parameters into different memory regions:
 - Updated continuously during operation
 - Include temperatures, currents, voltages, RPM
 
-### Extended Parameters (0x100-0x1FF)  
+### Extended Parameters (0x100-0x1FF)
 - Additional monitoring data
 - Less frequently updated
 - May include advanced diagnostics
@@ -248,7 +248,7 @@ The TAC controller organizes parameters into different memory regions:
 ### Common Issues
 
 - **Connection timeouts**: Implement retry logic with backoff
-- **Checksum failures**: Validate and discard corrupted packets  
+- **Checksum failures**: Validate and discard corrupted packets
 - **Missing responses**: Track pending requests and timeout
 - **BLE disconnections**: Reinitialize protocol on reconnect
 
@@ -283,3 +283,68 @@ This implementation is based on reverse-engineering the following sources:
 - TACDictionary.xml parameter definitions
 - NavitasMotorControllerModel.js calculation algorithms
 - DeviceCommunication.cs protocol implementation
+
+
+
+
+
+IBATLIMIT
+SPEEDOMETERMAXSPEED
+SOFTWAREREVISION
+VTHROTTLEV
+REVERSESW
+FORWARDSW
+CHARGERINTERLOCKIN
+
+ChargeIdc_Adc_q4_limit
+
+Complete Parameter Request/Response Analysis Using TACDictionary.xml
+
+  Request Parameters (36 total):
+
+  02 54 53 58 00 20 24 00 01 0F 10 16 19 1C 1D 20 25 2B 2F 58 5A 5B 5F 60 6A 6B 75 99 9A 9B 9C 9D 9F A0 A1 A2 A4 B3 B4 B6 BC C8
+
+  Response Data (72 bytes = 36 parameters × 2 bytes each):
+
+  02 6C 1C C9 0C 41 4B E4 00 00 00 00 00 00 00 00 2E 7D 00 22 16 D0 00 50 00 08 00 78 00 01 14 28 3C 28 00 00 00 01 00 8C 00 A6
+  00 23 05 C0 06 38 00 00 00 00 00 00 00 00 00 00 00 00 10 00 30 00 7C
+
+  Parsed Parameter Values (using big-endian):
+
+  | Pos | Addr | Parameter                | Raw Value     | Scale | Calculated Value  | Unit                    |
+  |-----|------|--------------------------|---------------|-------|-------------------|-------------------------|
+  | 0   | 0    | PBTEMPC                  | 02 6C = 620   | ÷16   | 38.8°C            | Controller Temp         |
+  | 1   | 1    | VBATVDC                  | 1C C9 = 7369  | ÷128  | 57.57V            | Battery Voltage         |
+  | 2   | 15   | VTHROTTLEV               | 0C 41 = 3137  | ÷4096 | 0.77V             | Throttle Voltage        |
+  | 3   | 16   | VBRAKEV                  | 4B E4 = 19428 | ÷4096 | 4.74V             | Brake Voltage           |
+  | 4   | 22   | REVERSESW                | 00 00 = 0     | ÷1    | 0 (Off)           | Reverse Switch          |
+  | 5   | 25   | FOOTSW                   | 00 00 = 0     | ÷1    | 0 (Off)           | Foot Switch             |
+  | 6   | 28   | BRAKESW                  | 00 00 = 0     | ÷1    | 0 (Off)           | Brake Switch            |
+  | 7   | 29   | FORWARDSW                | 00 00 = 0     | ÷1    | 0 (Off)           | Forward Switch          |
+  | 8   | 32   | SOFTWAREREVISION         | 2E 7D = 11901 | ÷1000 | 11.901            | Firmware Rev            |
+  | 9   | 37   | MTTEMPC                  | 00 22 = 34    | ÷1    | 34°C              | Motor Temperature       |
+  | 10  | 43   | IBATLIMIT                | 16 D0 = 5840  | ÷16   | 365A              | Battery Discharge Limit |
+  | 11  | 47   | OTWARNINGC               | 00 50 = 80    | ÷1    | 80°C              | Controller O/T Warning  |
+  | 12  | 88   | STATE                    | 00 08 = 8     | ÷1    | 8                 | Controller State        |
+  | 13  | 90   | NONFATALOTTRIPC          | 00 78 = 120   | ÷1    | 120°C             | Motor O/T Warning       |
+  | 14  | 91   | KEYIN                    | 00 01 = 1     | ÷1    | 1 (On)            | Key In                  |
+  | 15  | 95   | THROTTLEMIN              | 14 28 = 5160  | ÷4096 | 1.26V             | Throttle Min            |
+  | 16  | 96   | THROTTLEMAX              | 3C 28 = 15400 | ÷4096 | 3.76V             | Throttle Max            |
+  | 17  | 106  | TOWIN                    | 00 00 = 0     | ÷1    | 0                 | Tow Input               |
+  | 18  | 107  | CHARGERINTERLOCKIN       | 00 01 = 1     | ÷1    | 1 (Not Connected) | Charger Interlock       |
+  | 19  | 117  | MOTTRIPC                 | 00 8C = 140   | ÷1    | 140°C             | Motor O/T Trip          |
+  | 20  | 153  | Options                  | 00 A6 = 166   | ÷1    | 166               | Manufacturing Config    |
+  | 21  | 154  | SPEEDOMETERMAXSPEED      | 00 23 = 35    | ÷1    | 35                | Speedometer Max Speed   |
+  | 22  | 155  | TIREDIAMETER             | 05 C0 = 1472  | ÷64   | 23.0 inches ✓     | Tire Diameter           |
+  | 23  | 156  | REARAXLERATIO            | 06 38 = 1592  | ÷128  | 12.44 ✓           | Rear Axle Ratio         |
+  | 24  | 157  | MILESORKILOMETERS        | 00 00 = 0     | ÷1    | 0 (Miles) ✓       | Units                   |
+  | 25  | 159  | GROUPONEFAULTS           | 00 00 = 0     | ÷1    | 0                 | Group One Faults        |
+  | 26  | 160  | GROUPTWOFAULTS           | 00 00 = 0     | ÷1    | 0                 | Group Two Faults        |
+  | 27  | 161  | GROUPTHREEFAULTS         | 00 00 = 0     | ÷1    | 0                 | Group Three Faults      |
+  | 28  | 162  | GROUPFOURFAULTS          | 00 00 = 0     | ÷1    | 0                 | Group Four Faults       |
+  | 29  | 164  | VEHICLELOCKED            | 00 00 = 0     | ÷1    | 0 (Unlocked)      | Vehicle Locked          |
+  | 30  | 179  | BRAKEMIN                 | 00 00 = 0     | ÷4096 | 0.00V             | Brake Min               |
+  | 31  | 180  | BRAKEMAX                 | 00 00 = 0     | ÷4096 | 0.00V             | Brake Max               |
+  | 32  | 182  | THROTTLEFULL             | 10 00 = 4096  | ÷4096 | 1.00V             | Throttle Full           |
+  | 33  | 188  | LOGICSIDEBATTERYVOLTAGEV | 30 00 = 12288 | ÷128  | 96.0V             | Logic Side Battery      |
+  | 34  | 200  | SWITCHBITS               | 7C = 124      | ÷1    | 124               | Switch Bits ✓           |

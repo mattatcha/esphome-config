@@ -34,6 +34,48 @@ api:
       then:
         - lambda: |-
             id(orp_ezo).set_calibration_generic(222);
+    - action: get_ph_calibration
+      then:
+        - lambda: |-
+            id(ph_ezo).get_calibration();
+    - action: set_ph_calibration_mid
+      # Optional `temperature` (°C of the buffer) overrides the probe's temp
+      # compensation just before this point; omit or pass 0 to leave it as-is.
+      variables:
+        ph: float
+        temperature: float
+      then:
+        - lambda: |-
+            if (temperature > 0)
+              id(ph_ezo).set_t(temperature);
+            id(ph_ezo).set_calibration_point_mid(ph);
+    - action: set_ph_calibration_low
+      variables:
+        ph: float
+        temperature: float
+      then:
+        - lambda: |-
+            if (temperature > 0)
+              id(ph_ezo).set_t(temperature);
+            id(ph_ezo).set_calibration_point_low(ph);
+    - action: set_ph_calibration_high
+      variables:
+        ph: float
+        temperature: float
+      then:
+        - lambda: |-
+            if (temperature > 0)
+              id(ph_ezo).set_t(temperature);
+            id(ph_ezo).set_calibration_point_high(ph);
+    - action: set_ph_temperature_compensation
+      # Sends the EZO "T,n" command so calibration / readings are temperature
+      # compensated. Call this with the buffer solution's temperature right
+      # before a calibration point (queues ahead of the Cal command).
+      variables:
+        temperature: float
+      then:
+        - lambda: |-
+            id(ph_ezo).set_t(temperature);
     - action: calibrate_chlorine_pump
       variables:
         rotations: float
@@ -104,10 +146,18 @@ esphome:
         microsteps: 1
         interpolation: false
         direction: ccw
+        tcool_threshold: 600
     - tmc2209.currents:
         id: chlorinator
         standstill_mode: freewheeling
-        irun: 16
+        # irun: 16
+        run_current: 1250mA
+        ihold: 0
+        tpowerdown: 0
+        iholddelay: 0
+    - tmc2209.stallguard:
+        id: chlorinator
+        threshold: 50
     - tmc2209.configure:
         id: muratic_acid
         microsteps: 1
@@ -166,10 +216,17 @@ globals:
 
 tmc2209_hub:
 
+event:
+  - platform: template
+    id: events
+    event_types:
+      - "motor_stall"
+
 stepper:
   - platform: tmc2209
     id: chlorinator
-    max_speed: 586 steps/s
+    max_speed: 700 steps/s
+    acceleration: 2500 steps/s^2
     rsense: 110 mOhm
     address: 0x00
     config_dump_include_registers: true
@@ -177,10 +234,19 @@ stepper:
       - logger.log:
           format: "Chlorine driver is reporting an update! (code %d)"
           args: ["code"]
+    on_stall:
+      - logger.log:
+          format: "Motor stalled!"
+          level: ERROR
+      - event.trigger:
+          id: events
+          event_type: "motor_stall"
+      - stepper.stop: chlorinator
     <<: *ChlorinatorPins
   - platform: tmc2209
     id: muratic_acid
-    max_speed: 586 steps/s
+    max_speed: 750 steps/s
+    acceleration: 2500 steps/s^2
     rsense: 110 mOhm
     config_dump_include_registers: true
     address: 0x01
@@ -206,6 +272,28 @@ number:
     max_value: 2000
     step: 1
 
+  - platform: template
+    name: Chlorine Stallguard threshold
+    update_interval: 1s
+    min_value: 0
+    max_value: 255
+    step: 5
+    lambda: return id(chlorinator)->read_register(SGTHRS);
+    set_action:
+      - lambda: id(chlorinator)->write_register(SGTHRS, x);
+
+  # - platform: template
+  #   name: Chlorine Stallguard Threshold
+  #   min_value: 0
+  #   max_value: 255
+  #   step: 1
+  #   initial_value: "50"
+  #   optimistic: true
+  #   set_action:
+  #     - tmc2209.stallguard:
+  #         id: chlorinator
+  #         threshold: !lambda "return x;"
+
 # Button to run the calibration test
 button:
   - platform: template
@@ -228,7 +316,10 @@ button:
                     lambda: |-
                       return id(chlorinator).current_position != id(chlorinator).target_position;
                   then:
-                    - delay: 5s
+                    - logger.log:
+                        format: "chlorinator position : %d"
+                        args: ["id(chlorinator).current_position"]
+                    - delay: 1s
               - logger.log: "Chlorine dosing done!"
             else:
               - logger.log: "Cannot dose chlorine - pool pump must be running"
@@ -312,37 +403,36 @@ sensor:
           send_every: 1
           send_first_at: 1
 
-  - platform: adc
-    name: "pH Voltage"
-    id: raw_ph
-    # attenuation: auto
-    attenuation: 12dB
-    pin: 35
-    update_interval: 60s
-
-  - platform: copy
-    source_id: raw_ph
+  - platform: ezo
+    id: ph_ezo
     name: "pH"
-    # update_interval: 5s
+    icon: mdi:ph
+    address: 99
+    accuracy_decimals: 2
+    update_interval: 30s
+    state_class: "measurement"
     device_class: pH
     unit_of_measurement: pH
+    on_calibration:
+      then:
+        - logger.log:
+            format: "pH sensor calibration updated: (code %s)"
+            args: ["x.c_str()"]
+
+  - platform: copy
+    source_id: ph_ezo
+    id: ph_avg
+    icon: mdi:ph
+    name: "pH Average"
+    state_class: "measurement"
+    device_class: pH
+    unit_of_measurement: pH
+    accuracy_decimals: 2
     filters:
-      - median:
-          window_size: 15
-          send_every: 8
-      # Only report pH values when pump is off to avoid unstable readings
-      - lambda: |-
-          if (id(pump).state) {
-            return {};  // Don't report when pump is running
-          }
-          return x;
-      # Measured voltage -> Actual pH (buffer solution)
-      - calibrate_polynomial:
-          degree: 2
-          datapoints:
-            - 1.26 -> 4.0
-            - 1.412 -> 7.0
-            - 1.56 -> 10.01
+      - sliding_window_moving_average:
+          window_size: 10
+          send_every: 1
+          send_first_at: 1
 
   - platform: wifi_signal
     name: "WiFi Signal Sensor"
@@ -387,6 +477,21 @@ sensor:
       }
       return {};
     update_interval: 1s
+  - platform: tmc2209
+    tmc2209_id: chlorinator
+    type: motor_load
+    name: chlorine load
+    update_interval: 250ms
+  - platform: tmc2209
+    tmc2209_id: chlorinator
+    type: stallguard_result
+    name: Driver stallguard
+    update_interval: 250ms
+  # - platform: tmc2209
+  #   tmc2209_id: muratic_acid
+  #   type: actual_current
+  #   name: Acid Actual current
+  #   update_interval: 250ms
 
 switch:
   - platform: gpio

@@ -1,0 +1,283 @@
+# Xmas Countdown — LED clock board (TY-24-CLOCK-12V-V30) → ESP32
+#
+# Board mods: U2 and U5 removed. U1/U4 swapped to 74HCT595 (or 74AHCT125 buffer).
+# ESP32 powered from a 12V→5V buck (not the 7805).
+#
+# Wiring
+# Board: Waveshare ESP32-S3-Zero. 595 lines go through a 74AHCT125 (powered from board 5V).
+#   GP1 → AHCT 1A → U2 pad 6  (595 SER)
+#   GP2 → AHCT 2A → U2 pad 2  (595 SRCLK)
+#   GP4 → AHCT 3A → U2 pad 7  (595 RCLK)
+#   GP5 → U5 pad 4  (R27 → Q1 → B-)
+#   GP6 → U5 pad 5  (R28 → Q2 → A1-)
+#   GP7 → U5 pad 6  (R29 → Q3 → A2-)
+#   GP8 → U5 pad 7  (R30 → Q4 → A3-)
+#   GP9 ← U2 pad 5  (RF DATA via R9) + 2k from GP9 to GND
+#   (GP3 skipped: strapping pin)
+#
+# Shift chain: frame bit n = output n. Bits 0–7 = U1 QA..QH, bits 8–15 = U4 QA..QH.
+# Bit 15 (U4 QH) was the old U5 command line — unused now.
+
+esphome:
+  name: xmas-countdown
+  friendly_name: Xmas Countdown
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          pinMode(1, OUTPUT);   // SER
+          pinMode(2, OUTPUT);   // SRCLK
+          pinMode(4, OUTPUT);   // RCLK
+      - script.execute: render
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: arduino
+
+logger:
+api:
+ota:
+  - platform: esphome
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap: {}
+captive_portal:
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: America/Chicago
+
+globals:
+  - id: frame
+    type: uint16_t
+    initial_value: "0"
+  - id: chase_step
+    type: int
+    initial_value: "0"
+
+# ---------- Segment display ----------
+
+script:
+  - id: push_frame
+    mode: queued
+    then:
+      - lambda: |-
+          // Flip to true if the walking-bit test lights everything EXCEPT one segment.
+          const bool ACTIVE_LOW = true;    // confirmed: 595 output LOW = segment ON
+          uint16_t f = ACTIVE_LOW ? (uint16_t) ~id(frame) : id(frame);
+          digitalWrite(4, LOW);
+          for (int i = 15; i >= 0; i--) {        // first bit out ends up in U4 QH
+            digitalWrite(1, (f >> i) & 1);
+            digitalWrite(2, HIGH);
+            delayMicroseconds(1);
+            digitalWrite(2, LOW);
+          }
+          digitalWrite(4, HIGH);                 // latch
+          delayMicroseconds(1);
+          digitalWrite(4, LOW);
+          ESP_LOGD("clock", "Shifted frame 0x%04X", f);
+
+  - id: render
+    mode: queued
+    then:
+      - lambda: |-
+          // Segment → frame bit, order a,b,c,d,e,f,g.
+          // PLACEHOLDERS: fill these in from the walking-bit test.
+          // Confirmed by Test bit sweep (2026-11-11). Bits 7 and 15 are spares.
+          static const uint8_t D1[7] = {2, 0, 6, 5, 4, 3, 1};        // left digit (U1)
+          static const uint8_t D2[7] = {8, 9, 10, 11, 12, 14, 13};   // right digit (U4)
+          // 7-seg font, bit0 = a ... bit6 = g
+          static const uint8_t FONT[10] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F};
+
+          const std::string &mode = id(display_mode).state;
+          uint16_t f = 0;
+
+          if (mode == "Test bit") {
+            f = 1u << (int) id(test_bit).state;
+          } else if (mode == "All on") {
+            f = 0xFFFF;
+          } else if (mode == "Off") {
+            f = 0;
+          } else {
+            int v = -1;
+            auto t = id(sntp_time).now();
+            if (mode == "Days to Christmas" && t.is_valid()) {
+              auto leap = [](int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; };
+              int y = t.year, doy = t.day_of_year;           // 1-based
+              int xmas = 359 + (leap(y) ? 1 : 0);            // Dec 25 as day-of-year
+              int d = xmas - doy;
+              if (d < 0) d = (365 + (leap(y) ? 1 : 0) - doy) + 359 + (leap(y + 1) ? 1 : 0);
+              v = (d <= 99) ? d : -1;                        // >99 days shows "--"
+            } else if (mode == "Number") {
+              v = (int) id(show_number).state;
+            } else if (mode == "Hour" && t.is_valid()) {
+              v = t.hour % 12;
+              if (v == 0) v = 12;
+            } else if (mode == "Minute" && t.is_valid()) {
+              v = t.minute;
+            }
+            if (v >= 0) {
+              int tens = v / 10, ones = v % 10;
+              for (int s = 0; s < 7; s++) {
+                if (v >= 10 && ((FONT[tens] >> s) & 1)) f |= 1u << D1[s];
+                if ((FONT[ones] >> s) & 1)              f |= 1u << D2[s];
+              }
+            } else {
+              f = (1u << D1[6]) | (1u << D2[6]);    // "--" until time syncs
+            }
+          }
+          id(frame) = f;
+      - script.execute: push_frame
+
+select:
+  - platform: template
+    id: display_mode
+    name: Display mode
+    optimistic: true
+    options:
+      [
+        "Days to Christmas",
+        "Test bit",
+        "All on",
+        "Off",
+        "Number",
+        "Hour",
+        "Minute",
+      ]
+    initial_option: "Days to Christmas"
+    restore_value: true
+    on_value:
+      - script.execute: render
+
+number:
+  - platform: template
+    id: test_bit
+    name: Test bit
+    optimistic: true
+    min_value: 0
+    max_value: 15
+    step: 1
+    initial_value: 0
+    on_value:
+      - script.execute: render
+  - platform: template
+    id: show_number
+    name: Show number
+    optimistic: true
+    min_value: 0
+    max_value: 99
+    step: 1
+    initial_value: 0
+    restore_value: true
+    on_value:
+      - script.execute: render
+  - platform: template
+    id: chase_ms
+    name: Chase speed (ms)
+    optimistic: true
+    min_value: 100
+    max_value: 2000
+    step: 50
+    initial_value: 400
+    restore_value: true
+
+# ---------- Strand outputs (Q1–Q4, low-side switched) ----------
+
+output:
+  - { platform: ledc, id: out_b, pin: GPIO5, frequency: 1000Hz }
+  - { platform: ledc, id: out_a1, pin: GPIO6, frequency: 1000Hz }
+  - { platform: ledc, id: out_a2, pin: GPIO7, frequency: 1000Hz }
+  - { platform: ledc, id: out_a3, pin: GPIO8, frequency: 1000Hz }
+
+light:
+  - platform: monochromatic
+    id: strand_b
+    name: Strand B
+    output: out_b
+    effects:
+      - pulse:
+      - strobe:
+  - platform: monochromatic
+    id: strand_a1
+    name: Strand A1
+    output: out_a1
+    effects:
+      - pulse:
+      - strobe:
+  - platform: monochromatic
+    id: strand_a2
+    name: Strand A2
+    output: out_a2
+    effects:
+      - pulse:
+      - strobe:
+  - platform: monochromatic
+    id: strand_a3
+    name: Strand A3
+    output: out_a3
+    effects:
+      - pulse:
+      - strobe:
+
+switch:
+  - platform: template
+    id: a_chase
+    name: A1-A3 chase
+    optimistic: true
+  # DEBUG: holds GP1/GP2/GP4 steady so a multimeter can follow each line.
+  # On = all three HIGH, Off = all three LOW. Don't change Display mode while testing.
+  - platform: template
+    id: pin_test
+    name: Pin test (595 lines)
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: |-
+          digitalWrite(1, HIGH); digitalWrite(2, HIGH); digitalWrite(4, HIGH);
+          ESP_LOGD("clock", "Pin test: GP1/GP2/GP4 HIGH");
+    turn_off_action:
+      - lambda: |-
+          digitalWrite(1, LOW); digitalWrite(2, LOW); digitalWrite(4, LOW);
+          ESP_LOGD("clock", "Pin test: GP1/GP2/GP4 LOW");
+
+interval:
+  # Clock refresh
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_mode).state != "Test bit" && id(display_mode).state != "Number";'
+          then:
+            - script.execute: render
+
+  # A1 → A2 → A3 chase (the original "border" effect)
+  - interval: 50ms
+    then:
+      - lambda: |-
+          static uint32_t last = 0;
+          if (!id(a_chase).state) return;
+          uint32_t now = millis();
+          if (now - last < (uint32_t) id(chase_ms).state) return;
+          last = now;
+          id(chase_step) = (id(chase_step) + 1) % 3;
+          light::LightState *ls[3] = {id(strand_a1), id(strand_a2), id(strand_a3)};
+          for (int i = 0; i < 3; i++) {
+            auto c = (i == id(chase_step)) ? ls[i]->turn_on() : ls[i]->turn_off();
+            c.set_transition_length(150);
+            c.perform();
+          }
+
+# ---------- Original 433 MHz remote (optional) ----------
+# Press each remote button and watch the logs for rc_switch codes,
+# then add on_rc_switch triggers to map buttons to actions.
+remote_receiver:
+  pin:
+    number: GPIO9
+  dump: rc_switch
+  tolerance: 50%
+  filter: 250us
+  idle: 4ms
