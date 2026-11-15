@@ -116,18 +116,4 @@ Some parameters have special handling:
    - Address range 0x300-0x3FF requires software revision > 15.4
 4. Communication timeout is typically 3-4 seconds for normal operations, up to 120 seconds for bootloader operations
 
-## Files Generated
-
-1. **navitas_tac_discovery.yaml**: ESPHome configuration for discovering TAC controllers
-2. **navitas_tac_client.yaml**: ESPHome configuration for connecting to and communicating with TAC controllers
-3. **tac_client.h**: Custom C++ component for handling TAC protocol communication
-
-## Setup Instructions
-
-1. Use `navitas_tac_discovery.yaml` to scan for and identify TAC controllers in your area
-2. Note the MAC address of your TAC controller from the discovery logs
-3. Update the `mac_address` field in `navitas_tac_client.yaml` with your controller's MAC address
-4. Flash the client configuration to your ESP32
-5. Monitor the logs to see parameter data being received from the controller
-
 The scaling factors and parameter mappings may need adjustment based on your specific controller model and firmware version.
