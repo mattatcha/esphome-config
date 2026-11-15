@@ -29,28 +29,6 @@ external_components:
 preferences:
   flash_write_interval: 1min
 
-# Debug logging for the ratgdo stack. ratgdo's packet-level logs (ESP_LOG2)
-# are VERBOSE, so the global level must be VERBOSE; everything else is held
-# at INFO to keep the stream readable. Drop back to INFO once doors are stable.
-logger:
-  level: VERBOSE
-  logs:
-    ratgdo: VERBOSE
-    ratgdo_secplus2: VERBOSE
-    ratgdo_secplus1: VERBOSE
-    ratgdo_uart: VERBOSE
-    ratgdo.cover: DEBUG
-    ratgdo.number: DEBUG
-    ratgdo.observable: INFO
-    api: INFO
-    api.service: INFO
-    wifi: INFO
-    sensor: INFO
-    binary_sensor: INFO
-    component: INFO
-    scheduler: INFO
-    preferences: DEBUG
-
 # ---------------------------------------------------------------------------
 # Doors
 #   Left  -> input_gdo GPIO4,  output_gdo GPIO23, obst GPIO32  (hardware UART1)
