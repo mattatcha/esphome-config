@@ -29,6 +29,28 @@ external_components:
 preferences:
   flash_write_interval: 1min
 
+# Debug logging for the ratgdo stack. ratgdo's packet-level logs (ESP_LOG2)
+# are VERBOSE, so the global level must be VERBOSE; everything else is held
+# at INFO to keep the stream readable. Drop back to INFO once doors are stable.
+logger:
+  level: VERBOSE
+  logs:
+    ratgdo: VERBOSE
+    ratgdo_secplus2: VERBOSE
+    ratgdo_secplus1: VERBOSE
+    ratgdo_uart: VERBOSE
+    ratgdo.cover: DEBUG
+    ratgdo.number: DEBUG
+    ratgdo.observable: INFO
+    api: INFO
+    api.service: INFO
+    wifi: INFO
+    sensor: INFO
+    binary_sensor: INFO
+    component: INFO
+    scheduler: INFO
+    preferences: DEBUG
+
 # ---------------------------------------------------------------------------
 # Doors
 #   Left  -> input_gdo GPIO4,  output_gdo GPIO23, obst GPIO32  (hardware UART1)
@@ -149,6 +171,36 @@ sensor:
     name: "Right Openings"
 
 number:
+  # Security+ 2.0 rolling code + client ID. These are REQUIRED: they are the
+  # only thing that persists the counter/ID to flash. Without them every
+  # reboot resets the counter to 0 (client ID 0x539) and the opener rejects
+  # all commands as replays.
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_rolling_code_counter
+    type: rolling_code_counter
+    entity_category: config
+    name: "Left Rolling code counter"
+  - platform: ratgdo
+    ratgdo_id: door_left
+    id: door_left_client_id
+    type: client_id
+    entity_category: config
+    mode: box
+    name: "Left Client ID"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_rolling_code_counter
+    type: rolling_code_counter
+    entity_category: config
+    name: "Right Rolling code counter"
+  - platform: ratgdo
+    ratgdo_id: door_right
+    id: door_right_client_id
+    type: client_id
+    entity_category: config
+    mode: box
+    name: "Right Client ID"
   - platform: ratgdo
     ratgdo_id: door_left
     id: door_left_opening_duration
