@@ -36,6 +36,11 @@ esp32:
   framework:
     type: arduino
 
+# Save restored states (mode, number, lights, chase) within 10s of a change
+# instead of the 60s default, so a quick unplug doesn't lose them.
+preferences:
+  flash_write_interval: 10s
+
 logger:
 api:
 ota:
@@ -198,6 +203,7 @@ light:
     id: strand_b
     name: Strand B
     output: out_b
+    restore_mode: RESTORE_DEFAULT_ON   # come back as last left; on if never set
     effects:
       - pulse:
       - strobe:
@@ -205,6 +211,7 @@ light:
     id: strand_a1
     name: Strand A1
     output: out_a1
+    restore_mode: RESTORE_DEFAULT_ON   # come back as last left; on if never set
     effects:
       - pulse:
       - strobe:
@@ -212,6 +219,7 @@ light:
     id: strand_a2
     name: Strand A2
     output: out_a2
+    restore_mode: RESTORE_DEFAULT_ON   # come back as last left; on if never set
     effects:
       - pulse:
       - strobe:
@@ -219,6 +227,7 @@ light:
     id: strand_a3
     name: Strand A3
     output: out_a3
+    restore_mode: RESTORE_DEFAULT_ON   # come back as last left; on if never set
     effects:
       - pulse:
       - strobe:
@@ -228,6 +237,7 @@ switch:
     id: a_chase
     name: A1-A3 chase
     optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
     # Chase drives the outputs directly (see interval below) so HA doesn't get
     # a state change per step. When it stops, hand the outputs back to the lights.
     on_turn_off:
