@@ -228,6 +228,17 @@ switch:
     id: a_chase
     name: A1-A3 chase
     optimistic: true
+    # Chase drives the outputs directly (see interval below) so HA doesn't get
+    # a state change per step. When it stops, hand the outputs back to the lights.
+    on_turn_off:
+      - lambda: |-
+          light::LightState *ls[3] = {id(strand_a1), id(strand_a2), id(strand_a3)};
+          output::FloatOutput *out[3] = {id(out_a1), id(out_a2), id(out_a3)};
+          for (int i = 0; i < 3; i++) {
+            float b = 0;
+            ls[i]->current_values.as_brightness(&b, ls[i]->get_gamma_correct());
+            out[i]->set_level(b);
+          }
   # DEBUG: holds GP1/GP2/GP4 steady so a multimeter can follow each line.
   # On = all three HIGH, Off = all three LOW. Don't change Display mode while testing.
   - platform: template
@@ -254,21 +265,27 @@ interval:
           then:
             - script.execute: render
 
-  # A1 → A2 → A3 chase (the original "border" effect)
+  # A1 → A2 → A3 chase (the original "border" effect).
+  # Writes the PWM outputs directly with a ~150ms crossfade instead of calling
+  # turn_on/turn_off on the light entities, which spammed HA with state changes.
   - interval: 50ms
     then:
       - lambda: |-
           static uint32_t last = 0;
+          static float level[3] = {0, 0, 0};
           if (!id(a_chase).state) return;
           uint32_t now = millis();
-          if (now - last < (uint32_t) id(chase_ms).state) return;
-          last = now;
-          id(chase_step) = (id(chase_step) + 1) % 3;
-          light::LightState *ls[3] = {id(strand_a1), id(strand_a2), id(strand_a3)};
+          if (now - last >= (uint32_t) id(chase_ms).state) {
+            last = now;
+            id(chase_step) = (id(chase_step) + 1) % 3;
+          }
+          const float step = 50.0f / 150.0f;   // tick / fade time
+          output::FloatOutput *out[3] = {id(out_a1), id(out_a2), id(out_a3)};
           for (int i = 0; i < 3; i++) {
-            auto c = (i == id(chase_step)) ? ls[i]->turn_on() : ls[i]->turn_off();
-            c.set_transition_length(150);
-            c.perform();
+            float target = (i == id(chase_step)) ? 1.0f : 0.0f;
+            if (level[i] < target) level[i] = std::min(target, level[i] + step);
+            else if (level[i] > target) level[i] = std::max(target, level[i] - step);
+            out[i]->set_level(level[i]);
           }
 
 # ---------- Original 433 MHz remote (optional) ----------
