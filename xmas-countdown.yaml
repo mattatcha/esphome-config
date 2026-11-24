@@ -63,6 +63,12 @@ globals:
   - id: chase_step
     type: int
     initial_value: "0"
+  # Last days-to-Christmas value shown, kept across reboots so the display
+  # starts on it instead of "--" while SNTP syncs.
+  - id: last_days
+    type: int
+    restore_value: true
+    initial_value: "-1"
 
 # ---------- Segment display ----------
 
@@ -117,6 +123,9 @@ script:
               int d = xmas - doy;
               if (d < 0) d = (365 + (leap(y) ? 1 : 0) - doy) + 359 + (leap(y + 1) ? 1 : 0);
               v = (d <= 99) ? d : -1;                        // >99 days shows "--"
+              if (id(last_days) != v) id(last_days) = v;
+            } else if (mode == "Days to Christmas") {
+              v = id(last_days);                             // pre-sync: last value seen
             } else if (mode == "Number") {
               v = (int) id(show_number).state;
             } else if (mode == "Hour" && t.is_valid()) {
